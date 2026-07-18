@@ -1,3 +1,7 @@
+# 0.4.2
+
+- Documentation: restyled README for pub.dev (no code changes).
+
 # 0.4.1
 
 - Fixed captured photos coming out landscape on pipelines that deliver
