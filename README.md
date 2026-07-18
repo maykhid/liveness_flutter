@@ -101,6 +101,19 @@ library needs iOS 15.5 or newer).
 
 ## Photos, video, and "frame sequence" — which do I pick?
 
+**Capturing nothing is the default.** `capture` is an empty set unless you
+add to it — then `result.images` and `result.frameSequence` come back
+empty and `videoPath` is null. Nothing is encoded, kept in memory, or
+written to disk; frames are analyzed for the check and discarded
+immediately. You still get the verdict: `success`, `completedActions`,
+`confidenceScore`, `sessionId`, and `metadata` — a few hundred bytes.
+
+The trade-off: with no captured media, your server has nothing to
+independently verify — you're fully trusting the on-device result. Fine
+for low-stakes flows (gating a selfie upload); for KYC or anything with
+real consequences, capture at least `{CaptureType.images}` so your backend
+can double-check.
+
 | You want | Use | Notes |
 |---|---|---|
 | A photo of each completed action | `CaptureType.images` | Smallest uploads. Works everywhere. Best default. |
