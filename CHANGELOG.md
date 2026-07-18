@@ -1,3 +1,17 @@
+# 0.4.1
+
+- Fixed captured photos coming out landscape on pipelines that deliver
+  already-upright buffers (notably iOS): quarter-turn rotations are now
+  only applied to landscape buffers.
+- Much faster frame encoding: decoding and downscaling are fused, so
+  full-resolution intermediates are never materialized (~4x less work at
+  1080p→720). Frame-sequence capture no longer starves on slower devices
+  or debug builds.
+- `HttpLivenessUploader.onProgress(sentBytes, totalBytes)`: drive an
+  upload progress bar. Liveness payloads can be several MB — the example
+  app now demonstrates a progress dialog, and the README documents the
+  recommended loading-UX patterns.
+
 # 0.4.0
 
 Initial public release.
