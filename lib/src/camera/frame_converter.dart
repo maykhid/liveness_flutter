@@ -165,24 +165,38 @@ class FrameConverter {
     int maxDimension = 720,
     int quality = 85,
   }) {
+    // Fused decode + downscale: skip pixels during decoding so we never
+    // materialize the full-resolution intermediate. For a 1080p buffer
+    // downscaled to 720 this is ~4x less work — it keeps frame-sequence
+    // capture from starving on slower devices (and in debug builds).
+    final longest = raw.width > raw.height ? raw.width : raw.height;
+    var step = 1;
+    while (longest ~/ (step + 1) >= maxDimension) {
+      step++;
+    }
+
     img.Image? decoded;
     switch (raw.format) {
       case RawFrameFormat.nv21:
-        decoded = _nv21ToImage(raw);
+        decoded = _nv21ToImage(raw, step);
       case RawFrameFormat.nv12:
-        decoded = _nv12ToImage(raw);
+        decoded = _nv12ToImage(raw, step);
       case RawFrameFormat.bgra8888:
-        decoded = _bgraToImage(raw);
+        decoded = _bgraToImage(raw, step);
     }
     if (decoded == null) return null;
 
+    // A 90/270 rotation only applies to a landscape buffer. Some pipelines
+    // (notably iOS) deliver frames already rotated upright — rotating those
+    // again would flip portrait captures back to landscape.
+    final needsQuarterTurn = decoded.width > decoded.height;
     switch (raw.rotationDegrees) {
       case 90:
-        decoded = img.copyRotate(decoded, angle: 90);
+        if (needsQuarterTurn) decoded = img.copyRotate(decoded, angle: 90);
       case 180:
         decoded = img.copyRotate(decoded, angle: 180);
       case 270:
-        decoded = img.copyRotate(decoded, angle: 270);
+        if (needsQuarterTurn) decoded = img.copyRotate(decoded, angle: 270);
       default:
         break;
     }
@@ -196,38 +210,55 @@ class FrameConverter {
     return Uint8List.fromList(img.encodeJpg(decoded, quality: quality));
   }
 
-  static img.Image? _bgraToImage(RawFrame raw) {
+  static img.Image? _bgraToImage(RawFrame raw, int step) {
     final bytes = raw.planes.first;
-    return img.Image.fromBytes(
-      width: raw.width,
-      height: raw.height,
-      bytes: bytes.buffer,
-      bytesOffset: bytes.offsetInBytes,
-      rowStride: raw.strides.first,
-      order: img.ChannelOrder.bgra,
-    );
+    if (step <= 1) {
+      return img.Image.fromBytes(
+        width: raw.width,
+        height: raw.height,
+        bytes: bytes.buffer,
+        bytesOffset: bytes.offsetInBytes,
+        rowStride: raw.strides.first,
+        order: img.ChannelOrder.bgra,
+      );
+    }
+    final stride = raw.strides.first;
+    final outW = raw.width ~/ step;
+    final outH = raw.height ~/ step;
+    final out = img.Image(width: outW, height: outH);
+    for (var oy = 0; oy < outH; oy++) {
+      final rowStart = (oy * step) * stride;
+      for (var ox = 0; ox < outW; ox++) {
+        final i = rowStart + (ox * step) * 4;
+        if (i + 2 >= bytes.length) continue;
+        out.setPixelRgb(ox, oy, bytes[i + 2], bytes[i + 1], bytes[i]);
+      }
+    }
+    return out;
   }
 
   /// iOS bi-planar 420 (NV12): plane0 = Y, plane1 = interleaved UV.
-  static img.Image? _nv12ToImage(RawFrame raw) {
+  static img.Image? _nv12ToImage(RawFrame raw, int step) {
     if (raw.planes.length < 2) return null;
     final yBytes = raw.planes[0];
     final uvBytes = raw.planes[1];
-    final width = raw.width;
-    final height = raw.height;
     final yStride = raw.strides[0];
     final uvStride = raw.strides[1];
-    final out = img.Image(width: width, height: height);
+    final outW = raw.width ~/ step;
+    final outH = raw.height ~/ step;
+    final out = img.Image(width: outW, height: outH);
 
-    for (var y = 0; y < height; y++) {
+    for (var oy = 0; oy < outH; oy++) {
+      final y = oy * step;
       final uvRow = (y >> 1) * uvStride;
-      for (var x = 0; x < width; x++) {
+      for (var ox = 0; ox < outW; ox++) {
+        final x = ox * step;
         final yIndex = y * yStride + x;
         final uvIndex = uvRow + (x & ~1);
         if (yIndex >= yBytes.length || uvIndex + 1 >= uvBytes.length) {
           continue;
         }
-        _setYuvPixel(out, x, y, yBytes[yIndex], uvBytes[uvIndex] - 128,
+        _setYuvPixel(out, ox, oy, yBytes[yIndex], uvBytes[uvIndex] - 128,
             uvBytes[uvIndex + 1] - 128);
       }
     }
@@ -235,22 +266,24 @@ class FrameConverter {
   }
 
   /// Android NV21: single buffer, Y plane then interleaved VU.
-  static img.Image? _nv21ToImage(RawFrame raw) {
+  static img.Image? _nv21ToImage(RawFrame raw, int step) {
     final bytes = raw.planes.first;
-    final width = raw.width;
-    final height = raw.height;
     final stride = raw.strides.first;
-    final out = img.Image(width: width, height: height);
-    final uvStart = stride * height;
+    final outW = raw.width ~/ step;
+    final outH = raw.height ~/ step;
+    final out = img.Image(width: outW, height: outH);
+    final uvStart = stride * raw.height;
 
-    for (var y = 0; y < height; y++) {
+    for (var oy = 0; oy < outH; oy++) {
+      final y = oy * step;
       final uvRow = uvStart + (y >> 1) * stride;
-      for (var x = 0; x < width; x++) {
+      for (var ox = 0; ox < outW; ox++) {
+        final x = ox * step;
         final yIndex = y * stride + x;
         final uvIndex = uvRow + (x & ~1);
         if (yIndex >= bytes.length || uvIndex + 1 >= bytes.length) continue;
         // NV21 interleaves V then U.
-        _setYuvPixel(out, x, y, bytes[yIndex], bytes[uvIndex + 1] - 128,
+        _setYuvPixel(out, ox, oy, bytes[yIndex], bytes[uvIndex + 1] - 128,
             bytes[uvIndex] - 128);
       }
     }
