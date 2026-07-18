@@ -102,6 +102,14 @@ class DefaultInstructionPanel extends StatelessWidget {
 
   String get _instruction {
     final s = theme.strings;
+    // Frame-specific problems take priority — they tell the user exactly
+    // what to fix right now.
+    if (state.guidance != FaceGuidance.none &&
+        state.phase != LivenessPhase.completed &&
+        state.phase != LivenessPhase.failed) {
+      final hint = s.guidanceFor(state.guidance);
+      if (hint != null) return hint;
+    }
     switch (state.phase) {
       case LivenessPhase.initializing:
         return s.initializing;

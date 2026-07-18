@@ -60,6 +60,20 @@ enum CaptureType {
   frameSequence,
 }
 
+/// A specific, user-fixable problem with the current frame. Orthogonal to
+/// [LivenessPhase]: the phase says *where* the session is, the guidance says
+/// *what to tell the user right now*.
+enum FaceGuidance {
+  none,
+  noFace,
+  multipleFaces,
+  tooFar,
+  tooClose,
+  notCentered,
+  lowLight,
+  blurry,
+}
+
 /// Why a session failed.
 enum LivenessFailureReason {
   /// The current action was not completed within its timeout.
@@ -73,6 +87,11 @@ enum LivenessFailureReason {
 
   /// The user cancelled the session.
   cancelled,
+
+  /// The replay guard saw a long run of pixel-identical frames — a live
+  /// camera always has sensor noise, so this indicates injected/static
+  /// input rather than a real camera feed.
+  spoofSuspected,
 
   /// Camera or ML pipeline error.
   systemError,
@@ -203,6 +222,8 @@ class LivenessResult {
     required this.startedAt,
     required this.finishedAt,
     this.metadata = const {},
+    this.confidenceScore = 1.0,
+    this.sessionId = '',
   });
 
   final bool success;
@@ -225,7 +246,57 @@ class LivenessResult {
   /// Per-action durations (ms) and any extra diagnostics.
   final Map<String, Object?> metadata;
 
+  /// 0–1 composite score. Starts at 1.0 and is reduced by suspicious
+  /// signals: duplicate frames, unnaturally still head motion, and frame
+  /// quality problems during the session. A clean pass on a real camera
+  /// scores ≥ 0.9. The individual penalties are in [metadata] under
+  /// `confidence_*` keys, so your backend can apply its own weighting.
+  final double confidenceScore;
+
+  /// Unique audit ID for this session, e.g. `LV-018F3A2B9C4E-D7E31F08`
+  /// (timestamp hex + cryptographically random suffix).
+  final String sessionId;
+
   Duration get duration => finishedAt.difference(startedAt);
+
+  /// JSON-safe summary (no image/video bytes — just facts and counts).
+  /// Handy for logging and for sending alongside uploaded media.
+  Map<String, Object?> toJson() => {
+        'sessionId': sessionId,
+        'success': success,
+        'confidenceScore': double.parse(confidenceScore.toStringAsFixed(3)),
+        'completedActions': completedActions.map((a) => a.name).toList(),
+        'failureReason': failureReason?.name,
+        'imageCount': images.length,
+        'frameCount': frameSequence.length,
+        'videoPath': videoPath,
+        'startedAt': startedAt.toIso8601String(),
+        'finishedAt': finishedAt.toIso8601String(),
+        'durationMs': duration.inMilliseconds,
+        'metadata': metadata,
+      };
+
+  /// Multi-line human-readable summary — `debugPrint(result.toString())`.
+  @override
+  String toString() {
+    final b = StringBuffer('LivenessResult(\n')
+      ..writeln('  sessionId: $sessionId')
+      ..writeln('  success: $success'
+          '${failureReason == null ? '' : ' (${failureReason!.name})'}')
+      ..writeln(
+          '  confidence: ${(confidenceScore * 100).toStringAsFixed(1)}%')
+      ..writeln('  actions: ${completedActions.map((a) => a.name).join(' → ')}')
+      ..writeln('  duration: ${duration.inMilliseconds} ms')
+      ..writeln('  media: ${images.length} image(s), '
+          '${frameSequence.length} frame(s)'
+          '${videoPath == null ? '' : ', video: $videoPath'}');
+    if (metadata.isNotEmpty) {
+      b.writeln('  metadata:');
+      metadata.forEach((k, v) => b.writeln('    $k: $v'));
+    }
+    b.write(')');
+    return b.toString();
+  }
 }
 
 /// Tunable thresholds for the built-in detectors. Defaults work for most
@@ -296,6 +367,11 @@ class LivenessConfig {
     this.frameSequenceFps = 8,
     this.frameSequenceMaxFrames = 300,
     this.autoDeleteVideo = false,
+    this.enableQualityChecks = true,
+    this.brightnessMin = 0.10,
+    this.brightnessMax = 0.95,
+    this.sharpnessMin = 0.03,
+    this.enableReplayGuard = true,
   });
 
   /// Actions executed in order (unless [shuffleActions] is true).
@@ -368,6 +444,24 @@ class LivenessConfig {
   /// the detector closes (upload it or copy it first, then enable this).
   final bool autoDeleteVideo;
 
+  /// Pause the session (with guidance shown) when the frame is too dark,
+  /// overexposed, or blurry, instead of letting detection silently fail.
+  final bool enableQualityChecks;
+
+  /// Average frame brightness (0–1) below this = too dark.
+  final double brightnessMin;
+
+  /// Average frame brightness (0–1) above this = overexposed.
+  final double brightnessMax;
+
+  /// Brightness spread (0–1) below this = likely blurry / out of focus.
+  final double sharpnessMin;
+
+  /// Fail the session when a long run of pixel-identical frames is seen
+  /// (a live camera always has sensor noise; identical frames mean a
+  /// static/injected image). Also feeds the confidence score.
+  final bool enableReplayGuard;
+
   bool get captureImages => capture.contains(CaptureType.images);
   bool get captureVideo => capture.contains(CaptureType.video);
   bool get captureFrameSequence => capture.contains(CaptureType.frameSequence);
@@ -385,6 +479,7 @@ class LivenessSessionState {
     this.failureReason,
     this.faceInPosition = false,
     this.remaining,
+    this.guidance = FaceGuidance.none,
   });
 
   final LivenessPhase phase;
@@ -404,6 +499,10 @@ class LivenessSessionState {
   /// Time remaining before the current action times out.
   final Duration? remaining;
 
+  /// What's wrong with the current frame, if anything — drive specific user
+  /// hints from this ("move closer", "too dark", …).
+  final FaceGuidance guidance;
+
   /// Overall progress including completed actions.
   double get overallProgress => totalActions == 0
       ? 0
@@ -421,6 +520,7 @@ class LivenessSessionState {
     LivenessFailureReason? failureReason,
     bool? faceInPosition,
     Duration? remaining,
+    FaceGuidance? guidance,
   }) {
     return LivenessSessionState(
       phase: phase ?? this.phase,
@@ -432,6 +532,7 @@ class LivenessSessionState {
       failureReason: failureReason ?? this.failureReason,
       faceInPosition: faceInPosition ?? this.faceInPosition,
       remaining: remaining ?? this.remaining,
+      guidance: guidance ?? this.guidance,
     );
   }
 }

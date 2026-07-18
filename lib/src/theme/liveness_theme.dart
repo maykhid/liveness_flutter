@@ -64,6 +64,15 @@ class LivenessStrings {
     this.awaitingNeutral = 'Return to a neutral expression',
     this.completed = 'All done!',
     this.failed = 'Verification failed',
+    this.guidanceMessages = const {
+      FaceGuidance.noFace: 'Position your face in the oval',
+      FaceGuidance.multipleFaces: 'Only one face should be visible',
+      FaceGuidance.tooFar: 'Move closer',
+      FaceGuidance.tooClose: 'Move back a little',
+      FaceGuidance.notCentered: 'Center your face in the oval',
+      FaceGuidance.lowLight: 'Find better lighting',
+      FaceGuidance.blurry: 'Hold still — the image is blurry',
+    },
     this.actionInstructions = const {
       LivenessAction.blink: 'Blink your eyes',
       LivenessAction.smile: 'Smile',
@@ -90,6 +99,12 @@ class LivenessStrings {
   final String failed;
   final Map<LivenessAction, String> actionInstructions;
 
+  /// Frame-specific hints ("move closer", "too dark", …) shown when
+  /// something is wrong with the current frame.
+  final Map<FaceGuidance, String> guidanceMessages;
+
   String instructionFor(LivenessAction action) =>
       actionInstructions[action] ?? action.name;
+
+  String? guidanceFor(FaceGuidance guidance) => guidanceMessages[guidance];
 }

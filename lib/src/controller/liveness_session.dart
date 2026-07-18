@@ -103,12 +103,24 @@ class LivenessSession {
   /// [faces] — all faces detected this frame (normalized snapshots).
   /// [faceInPosition] — whether the primary face is inside the target oval
   /// (computed by the UI layer, which knows the oval geometry).
+  /// [guidance] — what to tell the user right now (surfaced in state).
+  /// [qualityHold] — frame is unusable (too dark/blurry): pause without
+  /// counting toward face-lost failure.
+  /// [spoofSuspected] — replay guard tripped: fail immediately.
   void onFrame({
     required List<FaceSnapshot> faces,
     required bool faceInPosition,
     required int timestampMs,
+    FaceGuidance guidance = FaceGuidance.none,
+    bool qualityHold = false,
+    bool spoofSuspected = false,
   }) {
     if (isTerminal || current.phase == LivenessPhase.initializing) return;
+
+    if (spoofSuspected) {
+      _fail(LivenessFailureReason.spoofSuspected);
+      return;
+    }
 
     if (faces.length > 1 && config.failOnMultipleFaces) {
       _fail(LivenessFailureReason.multipleFaces);
@@ -116,6 +128,16 @@ class LivenessSession {
     }
 
     final face = faces.isEmpty ? null : faces.first;
+
+    // Unusable frame (dark/blurry): freeze in place. Doesn't accumulate
+    // toward face-lost — a dim room shouldn't fail the session, the user
+    // just needs to fix the light.
+    if (qualityHold) {
+      _faceLostSinceMs = null;
+      _detector?.reset();
+      _emitState(current.copyWith(guidance: guidance));
+      return;
+    }
 
     // Face-lost handling with grace period.
     if (face == null || !faceInPosition) {
@@ -129,7 +151,8 @@ class LivenessSession {
         }
         // Within grace: freeze, but pause detector state.
         _detector?.reset();
-        _emitState(current.copyWith(faceInPosition: false));
+        _emitState(
+            current.copyWith(faceInPosition: false, guidance: guidance));
         return;
       }
       _emitState(current.copyWith(
@@ -137,10 +160,14 @@ class LivenessSession {
             ? LivenessPhase.searchingFace
             : LivenessPhase.centeringFace,
         faceInPosition: false,
+        guidance: guidance,
       ));
       return;
     }
     _faceLostSinceMs = null;
+    if (current.guidance != FaceGuidance.none) {
+      _emitState(current.copyWith(guidance: FaceGuidance.none));
+    }
 
     switch (current.phase) {
       case LivenessPhase.searchingFace:

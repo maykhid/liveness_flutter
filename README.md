@@ -24,9 +24,30 @@ account.
   HTTP uploader is included if you just want to POST it somewhere.
 - **Make it look like your app.** Colors, text, sizes are all changeable —
   or replace whole parts of the screen with your own widgets.
-- Built-in protections: only one face allowed, a time limit per action, a
-  required "neutral face" between actions, and optional random action order
-  so a pre-recorded video can't pass.
+- **Built-in protections** — all without heavy ML models or downloads:
+  - Only one face allowed, a time limit per action, a required "neutral
+    face" between actions.
+  - Optional random action order (`shuffleActions`) so a pre-recorded video
+    can't pass.
+  - **Replay guard**: a real camera never produces two pixel-identical
+    frames (sensor noise). A long run of identical frames means a static
+    image or injected feed — the session fails with `spoofSuspected`.
+  - **Micro-motion check**: a live head is never perfectly still. Sessions
+    with unnaturally frozen head angles get a lower confidence score.
+  - **Light & focus checks**: too-dark, overexposed, or blurry frames pause
+    the session with a clear hint ("Find better lighting") instead of
+    silently failing.
+- **Confidence score & audit ID**: every result carries a 0–1
+  `confidenceScore` (with the individual penalty counters in `metadata` so
+  your server can re-weigh them) and a unique, securely random `sessionId`
+  for audit trails.
+- **Smart user hints**: the state tells you exactly what's wrong right now
+  — `tooFar`, `tooClose`, `notCentered`, `lowLight`, `blurry`,
+  `multipleFaces` — and the default UI shows a matching message (all
+  translatable).
+- **Debug overlay** for development: set `showDebugOverlay: true` on the
+  widget to see live head angles, eye/smile probabilities, brightness, and
+  replay-guard counters on screen while you tune thresholds.
 
 ## Quick start
 
@@ -116,12 +137,16 @@ phone in advance. So this package gives you three tools:
 `onResult` gives you a `LivenessResult` with:
 
 - `success` — did the person complete all actions in time?
+- `confidenceScore` — 0 to 1. A clean run on a real camera scores 0.9+.
+  Duplicate frames, a frozen head, or many bad-quality frames pull it down.
+  The raw counters are in `metadata` under `confidence_*` keys.
+- `sessionId` — unique audit ID (e.g. `LV-018F3A2B9C4E-D7E31F08`)
 - `completedActions` — which actions, in the order they were performed
 - `images` — the photos, each labeled with the action it belongs to
 - `frameSequence` — the steady-stream photos, each with a timestamp
 - `videoPath` — where the video file is, if you recorded one
 - `failureReason` — why it failed (took too long, face left the screen,
-  more than one face, user cancelled…)
+  more than one face, replay/static input suspected, user cancelled…)
 - `metadata` — extras like how long each action took
 
 ## Sending results to your server
@@ -252,6 +277,16 @@ this for Android and iPhone, but if some device gets it backwards, set
 For users who find the actions difficult, use fewer/easier actions (blink,
 smile), a longer timeout, and `requireNeutralBetweenActions: false`.
 
-**It needs light.** Face detection struggles in the dark, and the package
-doesn't currently detect "too dark" for you. If failures spike at night,
-ask users to face a light before starting.
+**It needs light — but now it tells the user.** Face detection struggles in
+the dark. The package detects too-dark, overexposed, and blurry frames,
+pauses (it won't fail the session over lighting), and shows a hint like
+"Find better lighting". Thresholds: `brightnessMin`, `brightnessMax`,
+`sharpnessMin`; turn the whole check off with `enableQualityChecks: false`.
+
+**The anti-spoof checks are honest heuristics, not magic.** The replay
+guard catches static images and naive injected feeds; the micro-motion
+check flags unnaturally still sessions in the confidence score. Neither
+will stop a sophisticated attacker with a high-quality replay rig — that's
+what server-side review of the captured photos/video is for. If the replay
+guard ever misfires on a specific device (it shouldn't — real sensors are
+noisy), `enableReplayGuard: false` turns it off.

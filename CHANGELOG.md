@@ -1,3 +1,25 @@
+# 0.3.0
+
+All pure Dart — no new dependencies, no model downloads, minSdk unchanged.
+
+- **Replay guard**: long runs of pixel-identical frames (impossible from a
+  real camera) fail the session with `LivenessFailureReason.spoofSuspected`.
+  Disable via `enableReplayGuard: false`.
+- **Micro-motion check**: unnaturally still head angles lower the
+  confidence score (soft signal, never hard-fails).
+- **Frame quality gates**: too-dark/overexposed/blurry frames pause the
+  session with guidance instead of silently failing detection. Thresholds:
+  `brightnessMin/Max`, `sharpnessMin`; disable via
+  `enableQualityChecks: false`.
+- **`FaceGuidance`** on session state: `tooFar`, `tooClose`, `notCentered`,
+  `lowLight`, `blurry`, `multipleFaces`, `noFace` — with translatable
+  default messages (`LivenessStrings.guidanceMessages`).
+- **`confidenceScore`** (0–1) and secure **`sessionId`** on
+  `LivenessResult`; penalty counters exposed in `metadata` as
+  `confidence_*`.
+- **Debug overlay** (`showDebugOverlay: true`): live euler angles, eye and
+  smile probabilities, brightness/sharpness, replay-guard counters.
+
 # 0.2.0
 
 - BREAKING: `LivenessUploader` is now an abstract strategy —

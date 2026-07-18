@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
@@ -9,7 +10,9 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../camera/face_mapper.dart';
 import '../camera/frame_converter.dart';
+import '../camera/frame_quality.dart';
 import '../controller/liveness_session.dart';
+import '../detection/spoof_guard.dart';
 import '../models/models.dart';
 import '../theme/liveness_theme.dart';
 import 'liveness_overlay.dart';
@@ -44,6 +47,7 @@ class LivenessDetector extends StatefulWidget {
     this.instructionBuilder,
     this.showCloseButton = true,
     this.cameraResolution = ResolutionPreset.high,
+    this.showDebugOverlay = false,
   });
 
   final LivenessConfig config;
@@ -81,6 +85,11 @@ class LivenessDetector extends StatefulWidget {
   final bool showCloseButton;
   final ResolutionPreset cameraResolution;
 
+  /// Show live detection values on screen (euler angles, eye/smile
+  /// probabilities, brightness, sharpness, replay-guard counters). For
+  /// development and threshold tuning — leave off in production.
+  final bool showDebugOverlay;
+
   @override
   State<LivenessDetector> createState() => _LivenessDetectorState();
 }
@@ -110,6 +119,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
   final Map<String, Object?> _extraMetadata = {};
   String? _videoPath;
 
+  final SpoofGuard _spoofGuard = SpoofGuard();
+  late final String _sessionId;
+  FrameQuality? _lastQuality;
+  FaceSnapshot? _lastSnapshot;
+  int _qualityViolations = 0;
+
   bool get _needsContours =>
       widget.config.actions.contains(LivenessAction.openMouth) ||
       widget.config.actions.contains(LivenessAction.fullTeethSmile);
@@ -122,6 +137,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startedAt = DateTime.now();
+    _sessionId = _generateSessionId();
     _session = LivenessSession(widget.config);
     _session.addEventListener(_onSessionEvent);
     _init();
@@ -198,6 +214,20 @@ class _LivenessDetectorState extends State<LivenessDetector>
     }
   }
 
+  static String _generateSessionId() {
+    final random = Random.secure();
+    final suffix = List.generate(
+      8,
+      (_) => random.nextInt(16).toRadixString(16),
+    ).join().toUpperCase();
+    final stamp = DateTime.now()
+        .millisecondsSinceEpoch
+        .toRadixString(16)
+        .toUpperCase()
+        .padLeft(12, '0');
+    return 'LV-$stamp-$suffix';
+  }
+
   int _lastProcessedMs = 0;
 
   Future<void> _onFrame(CameraImage image) async {
@@ -219,6 +249,39 @@ class _LivenessDetectorState extends State<LivenessDetector>
       final mapper = _mapper;
       if (converter == null || detector == null || mapper == null) return;
 
+      // Cheap quality metrics + replay hash (subsampled luma, <1 ms).
+      final config = widget.config;
+      FrameQuality? quality;
+      if (config.enableQualityChecks || config.enableReplayGuard) {
+        quality = FrameQualityAnalyzer.analyze(image);
+        _lastQuality = quality;
+      }
+
+      // Unusable frame: pause with guidance rather than running detection
+      // on garbage. Skips the (pointless) ML call entirely.
+      if (config.enableQualityChecks && quality != null) {
+        final FaceGuidance? qualityIssue = quality.brightness <
+                config.brightnessMin
+            ? FaceGuidance.lowLight
+            : quality.brightness > config.brightnessMax
+                ? FaceGuidance.lowLight
+                : quality.sharpness < config.sharpnessMin
+                    ? FaceGuidance.blurry
+                    : null;
+        if (qualityIssue != null) {
+          _qualityViolations++;
+          _session.onFrame(
+            faces: const [],
+            faceInPosition: false,
+            timestampMs: now,
+            guidance: qualityIssue,
+            qualityHold: true,
+          );
+          if (widget.showDebugOverlay && mounted) setState(() {});
+          return;
+        }
+      }
+
       final inputImage = converter.toInputImage(image);
       if (inputImage == null) return;
 
@@ -236,11 +299,25 @@ class _LivenessDetectorState extends State<LivenessDetector>
           .toList();
 
       final primary = snapshots.isEmpty ? null : snapshots.first;
+      _lastSnapshot = primary;
+
+      _spoofGuard.onFrame(hash: quality?.hash, face: primary);
+
+      final positionIssue = primary == null
+          ? FaceGuidance.noFace
+          : snapshots.length > 1
+              ? FaceGuidance.multipleFaces
+              : _positionIssue(primary);
+
       _session.onFrame(
         faces: snapshots,
-        faceInPosition: primary != null && _isInPosition(primary),
+        faceInPosition: positionIssue == null,
         timestampMs: now,
+        guidance: positionIssue ?? FaceGuidance.none,
+        spoofSuspected:
+            config.enableReplayGuard && _spoofGuard.replaySuspected,
       );
+      if (widget.showDebugOverlay && mounted) setState(() {});
     } catch (e, st) {
       widget.onError?.call(e, st);
     } finally {
@@ -248,17 +325,21 @@ class _LivenessDetectorState extends State<LivenessDetector>
     }
   }
 
-  /// Face must be roughly centered and large enough. Uses box *area* rather
-  /// than width so the check works whether coordinates are in portrait
-  /// (Android upright) or landscape (iOS buffer) space.
-  bool _isInPosition(FaceSnapshot face) {
+  /// Returns the specific positioning problem, or null when the face is
+  /// usable. Uses box *area* rather than width so the check works whether
+  /// coordinates are in portrait (Android upright) or landscape (iOS
+  /// buffer) space.
+  FaceGuidance? _positionIssue(FaceSnapshot face) {
     final box = face.boundingBox;
+    final area = box.width * box.height;
+    if (area <= 0.04) return FaceGuidance.tooFar;
+    if (area >= 0.75) return FaceGuidance.tooClose;
     final cx = box.center.dx;
     final cy = box.center.dy;
-    final centered = (cx - 0.5).abs() < 0.25 && (cy - 0.5).abs() < 0.25;
-    final area = box.width * box.height;
-    final sized = area > 0.04 && area < 0.75;
-    return centered && sized;
+    if ((cx - 0.5).abs() >= 0.25 || (cy - 0.5).abs() >= 0.25) {
+      return FaceGuidance.notCentered;
+    }
+    return null;
   }
 
   void _onSessionEvent(LivenessEvent event) {
@@ -387,6 +468,16 @@ class _LivenessDetectorState extends State<LivenessDetector>
     _images.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
     _frames.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
 
+    // Composite confidence: clean sessions on a real camera score ≥ 0.9.
+    final completedRatio = widget.config.actions.isEmpty
+        ? 0.0
+        : _session.current.completedActions.length /
+            widget.config.actions.length;
+    var confidence = success ? 1.0 : 0.5 * completedRatio;
+    confidence -= _spoofGuard.confidencePenalty;
+    confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
+    confidence = confidence.clamp(0.0, 1.0);
+
     final result = LivenessResult(
       success: success,
       completedActions: _session.current.completedActions,
@@ -396,7 +487,14 @@ class _LivenessDetectorState extends State<LivenessDetector>
       videoPath: _videoPath,
       startedAt: _startedAt,
       finishedAt: DateTime.now(),
-      metadata: {..._session.metadata, ..._extraMetadata},
+      confidenceScore: confidence,
+      sessionId: _sessionId,
+      metadata: {
+        ..._session.metadata,
+        ..._extraMetadata,
+        ..._spoofGuard.metadata,
+        'confidence_qualityViolations': _qualityViolations,
+      },
     );
 
     // Let the final UI state (success/failure) render briefly before
@@ -483,9 +581,78 @@ class _LivenessDetectorState extends State<LivenessDetector>
                   ),
                 ),
               ),
+
+            if (widget.showDebugOverlay)
+              SafeArea(
+                child: Align(
+                  alignment: Alignment.topRight,
+                  child: _DebugPanel(
+                    snapshot: _lastSnapshot,
+                    quality: _lastQuality,
+                    spoofGuard: _spoofGuard,
+                    state: state,
+                  ),
+                ),
+              ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Live detection values for development and threshold tuning.
+class _DebugPanel extends StatelessWidget {
+  const _DebugPanel({
+    required this.snapshot,
+    required this.quality,
+    required this.spoofGuard,
+    required this.state,
+  });
+
+  final FaceSnapshot? snapshot;
+  final FrameQuality? quality;
+  final SpoofGuard spoofGuard;
+  final LivenessSessionState state;
+
+  String _fmt(double? v) => v == null ? '—' : v.toStringAsFixed(2);
+
+  @override
+  Widget build(BuildContext context) {
+    final s = snapshot;
+    final q = quality;
+    final lines = <String>[
+      'phase: ${state.phase.name}',
+      'guidance: ${state.guidance.name}',
+      if (s != null) ...[
+        'yaw: ${_fmt(s.headEulerAngleY)}  pitch: ${_fmt(s.headEulerAngleX)}',
+        'roll: ${_fmt(s.headEulerAngleZ)}',
+        'smile: ${_fmt(s.smileProbability)}',
+        'eyeL: ${_fmt(s.leftEyeOpenProbability)}  eyeR: ${_fmt(s.rightEyeOpenProbability)}',
+        'mouth: ${_fmt(s.mouthOpenRatio)}',
+      ] else
+        'face: none',
+      if (q != null)
+        'light: ${_fmt(q.brightness)}  sharp: ${_fmt(q.sharpness)}',
+      'dupes: ${spoofGuard.totalDuplicates}  '
+          'still: ${spoofGuard.lowMotionWindows}/${spoofGuard.totalMotionWindows}',
+    ];
+
+    return Container(
+      margin: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        lines.join('\n'),
+        style: const TextStyle(
+          color: Colors.greenAccent,
+          fontSize: 11,
+          fontFamily: 'monospace',
+        ),
+      ),
     );
   }
 }

@@ -44,6 +44,7 @@ class _HomePageState extends State<HomePage> {
   final Set<CaptureType> _capture = {CaptureType.images};
   bool _shuffle = false;
   bool _customUi = false;
+  bool _debugOverlay = false;
 
   // Optional: point this at your own API to test LivenessUploader.
   final TextEditingController _endpoint = TextEditingController();
@@ -62,6 +63,7 @@ class _HomePageState extends State<HomePage> {
           shuffle: _shuffle,
           capture: _capture,
           customUi: _customUi,
+          debugOverlay: _debugOverlay,
           endpoint: _endpoint.text.trim(),
         ),
       ),
@@ -130,6 +132,14 @@ class _HomePageState extends State<HomePage> {
             onChanged: (v) => setState(() => _shuffle = v),
           ),
           SwitchListTile(
+            title: const Text('Debug overlay'),
+            subtitle: const Text(
+                'Live yaw/pitch, eye & smile probabilities, brightness, '
+                'replay-guard counters'),
+            value: _debugOverlay,
+            onChanged: (v) => setState(() => _debugOverlay = v),
+          ),
+          SwitchListTile(
             title: const Text('Custom UI'),
             subtitle: const Text(
                 'Demo of overlayBuilder + instructionBuilder (rounded window, '
@@ -169,6 +179,7 @@ class LivenessScreen extends StatelessWidget {
     required this.shuffle,
     required this.capture,
     required this.customUi,
+    required this.debugOverlay,
     required this.endpoint,
   });
 
@@ -176,6 +187,7 @@ class LivenessScreen extends StatelessWidget {
   final bool shuffle;
   final Set<CaptureType> capture;
   final bool customUi;
+  final bool debugOverlay;
   final String endpoint;
 
   @override
@@ -196,10 +208,14 @@ class LivenessScreen extends StatelessWidget {
         // instruction area with our own widgets (see below).
         overlayBuilder: customUi ? _customOverlay : null,
         instructionBuilder: customUi ? _customInstructions : null,
+        showDebugOverlay: debugOverlay,
         onActionCompleted: (action, index) =>
             debugPrint('Completed: ${action.name} ($index)'),
         onError: (e, st) => debugPrint('Liveness error: $e'),
         onResult: (result) async {
+          // Full readable summary in the console on every session end.
+          debugPrint(result.toString());
+
           if (endpoint.isNotEmpty && result.success) {
             // Built-in multipart uploader. For any other transport (dio,
             // presigned S3, gRPC, Firebase…) just write your own function —
@@ -548,6 +564,10 @@ class ResultCard extends StatelessWidget {
             Text('Completed: '
                 '${result.completedActions.map((a) => a.name).join(', ')}'),
             Text('Duration: ${result.duration.inMilliseconds} ms'),
+            Text('Confidence: '
+                '${(result.confidenceScore * 100).toStringAsFixed(0)}%'),
+            Text('Session: ${result.sessionId}',
+                style: Theme.of(context).textTheme.bodySmall),
             Text('Images captured: ${result.images.length}'),
             if (result.frameSequence.isNotEmpty) ...[
               const SizedBox(height: 8),
