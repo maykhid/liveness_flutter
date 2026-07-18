@@ -1,0 +1,26 @@
+# Build artifacts and caches — never publish these.
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Example app: publish only its source, not generated platform projects.
+example/build/
+example/.dart_tool/
+example/android/
+example/ios/
+example/macos/
+example/linux/
+example/windows/
+example/web/
+example/pubspec.lock
+example/.flutter-plugins
+example/.flutter-plugins-dependencies
+example/.metadata
+
+# IDE / OS noise
+.idea/
+*.iml
+.vscode/
+.DS_Store
