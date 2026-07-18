@@ -7,11 +7,13 @@ import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 
 import '../camera/face_mapper.dart';
 import '../camera/frame_converter.dart';
 import '../camera/frame_quality.dart';
 import '../controller/liveness_session.dart';
+import '../detection/flash_challenge.dart';
 import '../detection/spoof_guard.dart';
 import '../models/models.dart';
 import '../theme/liveness_theme.dart';
@@ -120,6 +122,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
   String? _videoPath;
 
   final SpoofGuard _spoofGuard = SpoofGuard();
+  FlashChallenge? _flashChallenge;
+  final ValueNotifier<Color?> _flashTint = ValueNotifier(null);
+  double _flashPenalty = 0;
   late final String _sessionId;
   FrameQuality? _lastQuality;
   FaceSnapshot? _lastSnapshot;
@@ -144,15 +149,28 @@ class _LivenessDetectorState extends State<LivenessDetector>
   }
 
   Future<void> _init() async {
+    if (widget.config.boostScreenBrightness) {
+      // Best-effort: brightness control can be unavailable (e.g. some
+      // OEMs); never block the session on it.
+      try {
+        await ScreenBrightness.instance.setApplicationScreenBrightness(1.0);
+      } catch (_) {}
+    }
     try {
+      final assisted =
+          widget.config.cameraMode == LivenessCameraMode.assisted;
+      final wantedDirection = assisted
+          ? CameraLensDirection.back
+          : CameraLensDirection.front;
+
       final cameras = await availableCameras();
-      final front = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
+      final camera = cameras.firstWhere(
+        (c) => c.lensDirection == wantedDirection,
         orElse: () => cameras.first,
       );
 
       final controller = CameraController(
-        front,
+        camera,
         widget.cameraResolution,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.nv21, // ignored on iOS
@@ -163,10 +181,24 @@ class _LivenessDetectorState extends State<LivenessDetector>
         return;
       }
 
+      // Assisted mode: the screen faces the operator, so the torch does
+      // the face-lighting job instead. Best-effort (not all devices).
+      if (assisted && widget.config.assistedTorchEnabled) {
+        try {
+          await controller.setFlashMode(FlashMode.torch);
+        } catch (_) {}
+      }
+
       _cameraController = controller;
-      _converter = FrameConverter(camera: front, controller: controller);
+      _converter = FrameConverter(camera: camera, controller: controller);
+      // The back camera isn't mirrored like the front one, so the
+      // left/right sign convention flips in assisted mode.
+      final effectiveMirror = camera.lensDirection ==
+              CameraLensDirection.front
+          ? widget.config.mirrorYaw
+          : !widget.config.mirrorYaw;
       _mapper = FaceMapper(
-        mirrorYaw: widget.config.mirrorYaw,
+        mirrorYaw: effectiveMirror,
         uprightCoordinates: Platform.isAndroid,
       );
       _faceDetector = FaceDetector(
@@ -234,6 +266,15 @@ class _LivenessDetectorState extends State<LivenessDetector>
     _lastFrame = image;
     _framesSeen++;
     if (_finished) return;
+
+    // Flash challenge active: sample colors on every frame, skip ML.
+    final challenge = _flashChallenge;
+    if (challenge != null) {
+      final rgb = FlashChallenge.sampleCenterRgb(image);
+      if (rgb != null) challenge.addSample(rgb);
+      return;
+    }
+
     _maybeCaptureSequenceFrame(image);
     if (_busy) return;
 
@@ -354,7 +395,18 @@ class _LivenessDetectorState extends State<LivenessDetector>
         widget.onActionCompleted?.call(action, index);
         if (widget.config.captureImages) _captureFrame(action);
       case SessionCompletedEvent():
-        _finish(success: true);
+        final assisted =
+            widget.config.cameraMode == LivenessCameraMode.assisted;
+        if (widget.config.enableFlashChallenge && !assisted) {
+          _runFlashChallenge().whenComplete(() => _finish(success: true));
+        } else {
+          if (widget.config.enableFlashChallenge && assisted) {
+            // Screen faces the operator, not the subject — the challenge
+            // is physically meaningless here.
+            _extraMetadata['flashChallenge'] = 'skippedAssistedMode';
+          }
+          _finish(success: true);
+        }
       case SessionFailedEvent(:final reason):
         _finish(success: false, reason: reason);
     }
@@ -446,6 +498,10 @@ class _LivenessDetectorState extends State<LivenessDetector>
     final controller = _cameraController;
     try {
       if (controller != null && controller.value.isInitialized) {
+        // Torch off before teardown (assisted mode).
+        try {
+          await controller.setFlashMode(FlashMode.off);
+        } catch (_) {}
         if (_videoActive && controller.value.isRecordingVideo) {
           final file = await controller.stopVideoRecording();
           // Guard against silently-broken recordings (empty files).
@@ -476,6 +532,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     var confidence = success ? 1.0 : 0.5 * completedRatio;
     confidence -= _spoofGuard.confidencePenalty;
     confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
+    confidence -= _flashPenalty;
     confidence = confidence.clamp(0.0, 1.0);
 
     final result = LivenessResult(
@@ -494,6 +551,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
         ..._extraMetadata,
         ..._spoofGuard.metadata,
         'confidence_qualityViolations': _qualityViolations,
+        'cameraMode': widget.config.cameraMode.name,
       },
     );
 
@@ -501,6 +559,32 @@ class _LivenessDetectorState extends State<LivenessDetector>
     // handing off.
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (mounted) await widget.onResult(result);
+  }
+
+  /// ~2.6 s: 600 ms untinted baseline, then three ~650 ms color tints in a
+  /// random order. Camera keeps streaming; [_onFrame] collects color
+  /// samples. Result is a confidence penalty + metadata, never a hard fail.
+  Future<void> _runFlashChallenge() async {
+    if (_finished) return;
+    final challenge = FlashChallenge();
+    _flashChallenge = challenge;
+    try {
+      challenge.phase = -1;
+      _flashTint.value = null;
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      for (var i = 0; i < challenge.colors.length; i++) {
+        if (_finished || !mounted) break;
+        challenge.phase = i;
+        _flashTint.value = challenge.colors[i].tint;
+        await Future<void>.delayed(const Duration(milliseconds: 650));
+      }
+    } finally {
+      _flashTint.value = null;
+      _flashChallenge = null;
+    }
+    final passed = challenge.evaluate();
+    _extraMetadata.addAll(challenge.metadataFor(passed));
+    if (passed == false) _flashPenalty = 0.35;
   }
 
   void _cancel() => _session.cancel();
@@ -517,6 +601,13 @@ class _LivenessDetectorState extends State<LivenessDetector>
     WidgetsBinding.instance.removeObserver(this);
     _finished = true;
     _videoWatchdog?.cancel();
+    _flashTint.dispose();
+    if (widget.config.boostScreenBrightness) {
+      // Restore the user's brightness (fire-and-forget).
+      ScreenBrightness.instance
+          .resetApplicationScreenBrightness()
+          .catchError((_) {});
+    }
     final videoPath = _videoPath;
     if (widget.config.autoDeleteVideo && videoPath != null) {
       // Fire-and-forget; the file is in temp storage anyway.
@@ -568,6 +659,25 @@ class _LivenessDetectorState extends State<LivenessDetector>
                         state: state,
                         theme: widget.theme,
                       ),
+              ),
+            ),
+
+            // Color-flash challenge tint (drawn over everything except the
+            // close button and debug panel).
+            ValueListenableBuilder<Color?>(
+              valueListenable: _flashTint,
+              builder: (context, tint, _) => IgnorePointer(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  color: tint?.withOpacity(0.75) ?? Colors.transparent,
+                  alignment: Alignment.center,
+                  child: tint == null
+                      ? null
+                      : Text(
+                          widget.theme.strings.holdStill,
+                          style: widget.theme.instructionStyle,
+                        ),
+                ),
               ),
             ),
 

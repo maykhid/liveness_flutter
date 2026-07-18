@@ -212,6 +212,48 @@
       "languageVersion": "3.0"
     },
     {
+      "name": "screen_brightness",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness-2.1.11",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_android",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_android-2.1.6",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_ios",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_ios-2.1.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_macos",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_macos-2.1.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_ohos",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_ohos-2.1.4",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_platform_interface",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_platform_interface-2.1.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "screen_brightness_windows",
+      "rootUri": "file:///Users/henry/.pub-cache/hosted/pub.dev/screen_brightness_windows-2.1.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
       "name": "sky_engine",
       "rootUri": "file:///Users/henry/Development/flutter/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",

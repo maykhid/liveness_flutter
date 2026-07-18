@@ -43,6 +43,26 @@ enum LivenessAction {
   drawCircleWithNose,
 }
 
+/// Who is holding the phone during the check.
+enum LivenessCameraMode {
+  /// The person being verified holds the phone and faces the FRONT camera.
+  /// They see the oval, instructions, and progress themselves. This is the
+  /// normal mode.
+  selfService,
+
+  /// **Assisted capture**: an operator (bank agent, field officer) holds
+  /// the phone and points the BACK camera at the person being verified.
+  /// The operator watches the screen and relays the instructions ("please
+  /// blink", "turn left") out loud — the subject cannot see the screen.
+  ///
+  /// Because the screen faces away from the subject:
+  /// - the color-flash challenge is automatically skipped
+  ///   (`metadata['flashChallenge'] = 'skippedAssistedMode'`), and
+  /// - the device torch is used instead to light the subject's face in dim
+  ///   conditions (see `LivenessConfig.assistedTorchEnabled`).
+  assisted,
+}
+
 /// What media the session should capture. Combine freely, or use none.
 enum CaptureType {
   /// One JPEG per completed action (plus an optional neutral reference).
@@ -372,6 +392,10 @@ class LivenessConfig {
     this.brightnessMax = 0.95,
     this.sharpnessMin = 0.03,
     this.enableReplayGuard = true,
+    this.enableFlashChallenge = false,
+    this.boostScreenBrightness = true,
+    this.cameraMode = LivenessCameraMode.selfService,
+    this.assistedTorchEnabled = true,
   });
 
   /// Actions executed in order (unless [shuffleActions] is true).
@@ -461,6 +485,45 @@ class LivenessConfig {
   /// (a live camera always has sensor noise; identical frames mean a
   /// static/injected image). Also feeds the confidence score.
   final bool enableReplayGuard;
+
+  /// Opt-in screen-reflection challenge against video replays.
+  ///
+  /// After the actions succeed, the screen flashes a short sequence of
+  /// randomly ordered colors (~2.5 s, "hold still"). A real face reflects
+  /// the phone screen's light, so the camera sees each color's channel
+  /// rise; a video replayed on another screen can't know this session's
+  /// random order and won't respond correctly.
+  ///
+  /// Soft signal by design, because the physics depends on ambient light:
+  /// the screen must be a meaningful light source on the face. Strong in
+  /// dim/normal indoor lighting; weak in bright offices or near large
+  /// windows (real faces may score inconclusive/failed); meaningless
+  /// outdoors in daylight. Low screen brightness and strongly colored
+  /// ambient light also weaken it. A failed challenge therefore only
+  /// lowers [LivenessResult.confidenceScore] by 0.35 and sets
+  /// `metadata['flashChallenge'] = 'failed'` — it never fails the session
+  /// on its own. Treat failures as "review", not "fraud", and decide the
+  /// weight server-side. See the README section on this feature.
+  final bool enableFlashChallenge;
+
+  /// Raise the screen to full brightness while the liveness screen is open,
+  /// restoring the user's setting when it closes. The screen lights the
+  /// face — this helps detection in dim rooms and materially strengthens
+  /// the color-flash challenge (and counters battery-saver dimming).
+  /// Only affects this app's window, never the system brightness setting.
+  final bool boostScreenBrightness;
+
+  /// See [LivenessCameraMode]. Default is [LivenessCameraMode.selfService]
+  /// (front camera, user verifies themself). Choose
+  /// [LivenessCameraMode.assisted] only for operator-held flows — the
+  /// subject cannot see the instructions, so the operator must relay them.
+  final LivenessCameraMode cameraMode;
+
+  /// In [LivenessCameraMode.assisted], turn on the device torch for the
+  /// whole session to light the subject's face (the screen, which normally
+  /// does that job, faces the operator instead). Best-effort: ignored on
+  /// devices without a torch.
+  final bool assistedTorchEnabled;
 
   bool get captureImages => capture.contains(CaptureType.images);
   bool get captureVideo => capture.contains(CaptureType.video);

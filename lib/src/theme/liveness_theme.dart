@@ -64,6 +64,7 @@ class LivenessStrings {
     this.awaitingNeutral = 'Return to a neutral expression',
     this.completed = 'All done!',
     this.failed = 'Verification failed',
+    this.holdStill = 'Hold still…',
     this.guidanceMessages = const {
       FaceGuidance.noFace: 'Position your face in the oval',
       FaceGuidance.multipleFaces: 'Only one face should be visible',
@@ -97,6 +98,10 @@ class LivenessStrings {
   final String awaitingNeutral;
   final String completed;
   final String failed;
+
+  /// Shown during the color-flash challenge.
+  final String holdStill;
+
   final Map<LivenessAction, String> actionInstructions;
 
   /// Frame-specific hints ("move closer", "too dark", …) shown when

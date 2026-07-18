@@ -32,6 +32,9 @@ account.
   - **Replay guard**: a real camera never produces two pixel-identical
     frames (sensor noise). A long run of identical frames means a static
     image or injected feed — the session fails with `spoofSuspected`.
+  - **Color-flash challenge** (opt-in, `enableFlashChallenge`): the screen
+    flashes random colors and checks the face reflects them — defeats
+    video replays on a second screen. See its own section below.
   - **Micro-motion check**: a live head is never perfectly still. Sessions
     with unnaturally frozen head angles get a lower confidence score.
   - **Light & focus checks**: too-dark, overexposed, or blurry frames pause
@@ -282,6 +285,103 @@ the dark. The package detects too-dark, overexposed, and blurry frames,
 pauses (it won't fail the session over lighting), and shows a hint like
 "Find better lighting". Thresholds: `brightnessMin`, `brightnessMax`,
 `sharpnessMin`; turn the whole check off with `enableQualityChecks: false`.
+
+## Assisted mode: verifying someone else (opt-in)
+
+By default the person being verified holds the phone and uses the front
+camera — they see the oval and instructions themselves.
+
+Some flows are different: a bank agent or field officer holds the phone
+and verifies **another person** — common in branch onboarding and doorstep
+KYC. For that, set:
+
+```dart
+LivenessConfig(
+  actions: [...],
+  cameraMode: LivenessCameraMode.assisted,
+)
+```
+
+**Understand what assisted mode means before using it:**
+
+- The **back camera** is used, pointed at the subject. The **operator**
+  watches the screen and must **read each instruction out loud** ("please
+  blink", "turn your head left") — the subject cannot see the screen.
+- "Left" and "right" are handled for you: instructions always mean the
+  *subject's* left/right, and the detection signs are flipped
+  automatically for the unmirrored back camera.
+- The **device torch turns on** for the whole session to light the
+  subject's face — in self-service mode the bright screen does that job,
+  but here the screen faces the wrong way. Turn this off with
+  `assistedTorchEnabled: false` (e.g. if the torch startles people at
+  close range). It's best-effort: skipped on devices without a torch.
+- The **color-flash challenge is automatically skipped** (the screen's
+  colors can't reach the subject's face). If you enabled it, you'll see
+  `metadata['flashChallenge'] = 'skippedAssistedMode'`. The replay guard,
+  micro-motion check, and quality gates all still run.
+- Everything else works the same: same actions, same capture options, same
+  result. `metadata` tells your backend which mode was used — decide
+  whether assisted sessions need extra server-side review, since the
+  operator (not the subject) controls the device.
+
+## Stopping video replays: the color-flash challenge (opt-in)
+
+The hardest cheap attack on *any* action-based liveness check is playing a
+video of a real person on a second screen. The actions in the video look
+real to the camera, because they were real when recorded.
+
+`enableFlashChallenge: true` adds a defense: right after the actions
+succeed, the screen flashes a short sequence of colors (red/green/blue, in
+a **random order each session**, ~2.5 seconds, with a "Hold still…"
+message). A real face is lit by the phone's screen, so the camera sees each
+color reflected on the skin. A video replayed on another screen was
+recorded before this session's random order existed — its "face" doesn't
+reflect the right colors at the right times.
+
+```dart
+LivenessConfig(
+  actions: [...],
+  shuffleActions: true,
+  enableFlashChallenge: true,
+)
+```
+
+What to know before enabling it:
+
+- **It's a soft signal, on purpose — and lighting is why.** The whole trick
+  depends on the phone screen being a meaningful light source on the user's
+  face. The brighter the environment, the smaller the screen's
+  contribution, and the weaker the signal:
+
+  | Environment | What to expect |
+  |---|---|
+  | Dim / evening indoor | Strong signal — reflections clearly measurable |
+  | Normal indoor lighting | Good signal — reliable for most users |
+  | Bright office / large windows / direct lamps | Weak signal — real faces may score `'inconclusive'` or occasionally `'failed'` |
+  | Outdoors in daylight | Little to no signal — results are not meaningful |
+
+  Other things that weaken it: the user holding the phone far from their
+  face, very low screen brightness (battery saver), and strongly colored
+  ambient light (e.g. colored LED strips) confusing the channel
+  comparison. To help with the brightness part, the package **raises the
+  screen to full brightness automatically** while the liveness screen is
+  open and restores the user's setting afterward (only this app's window —
+  the system setting is untouched). Turn that off with
+  `boostScreenBrightness: false` if your app manages brightness itself.
+
+  This is why a failed challenge only lowers `confidenceScore` by 0.35 and
+  sets `metadata['flashChallenge'] = 'failed'` — it never rejects the user
+  by itself. **Treat a failure as "review this one", not "this is fraud."**
+  Your server decides the weight: for example, require a passed flash for
+  indoor onboarding flows, and ignore the signal when your funnel is
+  outdoor-heavy. If in doubt, log the metadata for a few weeks and look at
+  the pass rate for your real users before acting on it.
+- Adds ~2.5 seconds and a brief colorful flash to the end of the flow —
+  worth telling users about in your own UI copy. The "Hold still…" text is
+  translatable (`LivenessStrings.holdStill`).
+- Works alongside everything else: the metadata result rides along in
+  uploads, and the flash moment is also captured in your video/frames as
+  extra server-side evidence (a real face visibly changes color!).
 
 **The anti-spoof checks are honest heuristics, not magic.** The replay
 guard catches static images and naive injected feeds; the micro-motion

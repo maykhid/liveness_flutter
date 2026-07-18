@@ -45,6 +45,8 @@ class _HomePageState extends State<HomePage> {
   bool _shuffle = false;
   bool _customUi = false;
   bool _debugOverlay = false;
+  bool _flashChallenge = false;
+  bool _assisted = false;
 
   // Optional: point this at your own API to test LivenessUploader.
   final TextEditingController _endpoint = TextEditingController();
@@ -64,6 +66,8 @@ class _HomePageState extends State<HomePage> {
           capture: _capture,
           customUi: _customUi,
           debugOverlay: _debugOverlay,
+          flashChallenge: _flashChallenge,
+          assisted: _assisted,
           endpoint: _endpoint.text.trim(),
         ),
       ),
@@ -132,6 +136,23 @@ class _HomePageState extends State<HomePage> {
             onChanged: (v) => setState(() => _shuffle = v),
           ),
           SwitchListTile(
+            title: const Text('Assisted mode (back camera + torch)'),
+            subtitle: const Text(
+                'An operator points the phone at someone else and reads the '
+                'instructions out loud — the subject can\'t see the screen. '
+                'Flash challenge is skipped.'),
+            value: _assisted,
+            onChanged: (v) => setState(() => _assisted = v),
+          ),
+          SwitchListTile(
+            title: const Text('Color-flash challenge'),
+            subtitle: const Text(
+                'Anti-replay: screen flashes random colors after the actions '
+                'and checks the face reflects them. Works best indoors.'),
+            value: _flashChallenge,
+            onChanged: (v) => setState(() => _flashChallenge = v),
+          ),
+          SwitchListTile(
             title: const Text('Debug overlay'),
             subtitle: const Text(
                 'Live yaw/pitch, eye & smile probabilities, brightness, '
@@ -180,6 +201,8 @@ class LivenessScreen extends StatelessWidget {
     required this.capture,
     required this.customUi,
     required this.debugOverlay,
+    required this.flashChallenge,
+    required this.assisted,
     required this.endpoint,
   });
 
@@ -188,6 +211,8 @@ class LivenessScreen extends StatelessWidget {
   final Set<CaptureType> capture;
   final bool customUi;
   final bool debugOverlay;
+  final bool flashChallenge;
+  final bool assisted;
   final String endpoint;
 
   @override
@@ -199,6 +224,10 @@ class LivenessScreen extends StatelessWidget {
           actions: actions,
           shuffleActions: shuffle,
           capture: capture,
+          enableFlashChallenge: flashChallenge,
+          cameraMode: assisted
+              ? LivenessCameraMode.assisted
+              : LivenessCameraMode.selfService,
         ),
         theme: const LivenessTheme(
           progressColor: Colors.tealAccent,

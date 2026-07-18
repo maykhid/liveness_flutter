@@ -1,3 +1,28 @@
+# 0.4.0
+
+- **Assisted mode** (`cameraMode: LivenessCameraMode.assisted`): operator
+  points the back camera at the person being verified and relays the
+  instructions out loud. Torch lights the subject's face (opt out with
+  `assistedTorchEnabled: false`), left/right detection signs flip
+  automatically for the unmirrored back camera, the flash challenge is
+  skipped (`metadata['flashChallenge'] = 'skippedAssistedMode'`), and
+  `metadata['cameraMode']` records the mode for backend review.
+
+- Screen is raised to full brightness while the liveness screen is open
+  (restored on close; app window only). Helps detection in dim rooms and
+  strengthens the flash challenge. Opt out with
+  `boostScreenBrightness: false`. Adds the tiny `screen_brightness` plugin
+  dependency.
+
+- **Color-flash challenge** (opt-in `enableFlashChallenge`): after the
+  actions succeed, the screen flashes randomly ordered colors and verifies
+  the face reflects them — defeats video replays on a second screen. Soft
+  signal: lowers `confidenceScore` by 0.35 on failure and reports
+  `metadata['flashChallenge']` (`passed`/`failed`/`inconclusive`); never
+  hard-fails. New translatable string `LivenessStrings.holdStill`.
+- `LivenessResult.toString()` (readable session log) and `toJson()`
+  (JSON-safe summary without media bytes).
+
 # 0.3.0
 
 All pure Dart — no new dependencies, no model downloads, minSdk unchanged.
