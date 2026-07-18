@@ -245,27 +245,73 @@ class LivenessScreen extends StatelessWidget {
           // Full readable summary in the console on every session end.
           debugPrint(result.toString());
 
-          if (endpoint.isNotEmpty && result.success) {
-            // Built-in multipart uploader. For any other transport (dio,
-            // presigned S3, gRPC, Firebase…) just write your own function —
-            // result contains everything:
-            //   await LivenessUploader.custom((r) async { ... }).upload(result);
-            // or skip the uploader class entirely and upload right here.
-            final uploader = HttpLivenessUploader(
-              endpoint: Uri.parse(endpoint),
-              onResponse: (response) async =>
-                  debugPrint('Upload status: ${response.statusCode}'),
-            );
-            try {
-              await uploader.upload(result);
-            } catch (e) {
-              debugPrint('Upload failed: $e');
-            }
+          if (endpoint.isNotEmpty && result.success && context.mounted) {
+            // Uploading happens in YOUR code, so the loading UI is fully
+            // yours. Here: a dialog with a progress bar driven by
+            // HttpLivenessUploader.onProgress. Any transport works —
+            // LivenessUploader.custom((r) async { ... }) wraps dio, S3, etc.
+            await _uploadWithProgress(context, result, endpoint);
           }
           if (context.mounted) Navigator.pop(context, result);
         },
       ),
     );
+  }
+}
+
+/// Uploads with a non-dismissible progress dialog. The progress bar is
+/// driven by [HttpLivenessUploader.onProgress] via a [ValueNotifier].
+Future<void> _uploadWithProgress(
+  BuildContext context,
+  LivenessResult result,
+  String endpoint,
+) async {
+  final progress = ValueNotifier<double>(0);
+
+  // Show the dialog; don't await it — the upload below controls when it
+  // closes.
+  showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Uploading results…'),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<double>(
+              valueListenable: progress,
+              builder: (_, value, __) => Column(
+                children: [
+                  LinearProgressIndicator(value: value == 0 ? null : value),
+                  const SizedBox(height: 8),
+                  Text('${(value * 100).toStringAsFixed(0)}%'),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  try {
+    await HttpLivenessUploader(
+      endpoint: Uri.parse(endpoint),
+      onProgress: (sent, total) =>
+          progress.value = total > 0 ? sent / total : 0,
+      onResponse: (response) async =>
+          debugPrint('Upload status: ${response.statusCode}'),
+    ).upload(result);
+  } catch (e) {
+    debugPrint('Upload failed: $e');
+  } finally {
+    if (context.mounted) {
+      Navigator.of(context, rootNavigator: true).pop(); // close the dialog
+    }
+    progress.dispose();
   }
 }
 

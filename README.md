@@ -175,6 +175,7 @@ and any upload code you already have will do. For convenience:
 await HttpLivenessUploader(
   endpoint: Uri.parse('https://api.example.com/liveness'),
   headers: {'Authorization': 'Bearer …'},
+  onProgress: (sent, total) => progress.value = sent / total,
 ).upload(result);
 
 // Or wrap your own function (dio, Firebase, S3, anything):
@@ -182,6 +183,16 @@ final uploader = LivenessUploader.custom((result) async {
   // your code here
 });
 ```
+
+**Show a progress bar.** With photos and frames, an upload is easily
+several MB — on mobile data that's many seconds, and a silent wait looks
+frozen. `onProgress` gives you `(sentBytes, totalBytes)` to drive any
+progress UI. Since uploading happens in *your* `onResult` code, the UI is
+fully yours: a common pattern is to close the camera screen immediately
+(`Navigator.pop`) and upload from the previous screen with a
+`LinearProgressIndicator`, so the user is never stuck staring at a frozen
+camera. If you bring your own transport instead (dio etc.), use its
+progress callbacks the same way.
 
 ## Making it look like your app
 

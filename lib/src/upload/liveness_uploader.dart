@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -49,6 +50,7 @@ class HttpLivenessUploader extends LivenessUploader {
     this.videoFieldName = 'video',
     this.metadataFieldName = 'metadata',
     this.onResponse,
+    this.onProgress,
   });
 
   final Uri endpoint;
@@ -64,6 +66,14 @@ class HttpLivenessUploader extends LivenessUploader {
   /// Inspect the server response (status code, body) if you care about it.
   final Future<void> Function(http.StreamedResponse response)? onResponse;
 
+  /// Called as the request body is sent — drive a progress bar with
+  /// `sentBytes / totalBytes`. Liveness payloads can be several MB, so
+  /// showing progress is strongly recommended (see README).
+  ///
+  /// Note: reports bytes handed to the network stack; on fast connections
+  /// it may reach 100% slightly before the server finishes reading.
+  final void Function(int sentBytes, int totalBytes)? onProgress;
+
   /// Sends:
   /// - `metadata` field: JSON with success, actions, timings
   /// - `images[i]` files: JPEG per captured frame (filename encodes action)
@@ -71,8 +81,9 @@ class HttpLivenessUploader extends LivenessUploader {
   /// - `video` file: the session recording, if any
   @override
   Future<void> upload(LivenessResult result) async {
-    final request = http.MultipartRequest('POST', endpoint)
-      ..headers.addAll(headers);
+    final request =
+        _ProgressMultipartRequest('POST', endpoint, onProgress: onProgress)
+          ..headers.addAll(headers);
 
     request.fields[metadataFieldName] = jsonEncode({
       'success': result.success,
@@ -115,5 +126,30 @@ class HttpLivenessUploader extends LivenessUploader {
 
     final response = await request.send();
     await onResponse?.call(response);
+  }
+}
+
+/// MultipartRequest that reports bytes as they're written to the wire.
+class _ProgressMultipartRequest extends http.MultipartRequest {
+  _ProgressMultipartRequest(super.method, super.url, {this.onProgress});
+
+  final void Function(int sent, int total)? onProgress;
+
+  @override
+  http.ByteStream finalize() {
+    final byteStream = super.finalize();
+    final progress = onProgress;
+    if (progress == null) return byteStream;
+
+    final total = contentLength;
+    var sent = 0;
+    final transformer = StreamTransformer<List<int>, List<int>>.fromHandlers(
+      handleData: (data, sink) {
+        sent += data.length;
+        progress(sent, total);
+        sink.add(data);
+      },
+    );
+    return http.ByteStream(byteStream.transform(transformer));
   }
 }
