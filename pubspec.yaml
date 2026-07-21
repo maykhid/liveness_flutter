@@ -1,11 +1,9 @@
 name: liveness_flutter
 description: >-
-  Plug-and-play, customizable liveness detection for Flutter. Drive a sequence
-  of liveness actions (blink, smile, nod, head turns, and more), capture images
-  and/or video, and send results to your own backend.
+  Plug-and-play liveness detection for Flutter. Configure action sequences like blink and smile, capture images or video, and send verification results to your backend.
 version: 0.4.2
-homepage: https://github.com/henryifebunandu/liveness_flutter
-repository: https://github.com/henryifebunandu/liveness_flutter
+homepage: https://github.com/maykhid/liveness_flutter
+repository: https://github.com/maykhid/liveness_flutter
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

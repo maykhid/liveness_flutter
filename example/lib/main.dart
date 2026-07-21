@@ -443,7 +443,7 @@ class _WindowPainter extends CustomPainter {
       ..addRect(Offset.zero & size)
       ..addRRect(window)
       ..fillType = PathFillType.evenOdd;
-    canvas.drawPath(scrim, Paint()..color = Colors.black.withOpacity(0.75));
+    canvas.drawPath(scrim, Paint()..color = Colors.black.withValues(alpha: 0.75));
     canvas.drawRRect(
       window,
       Paint()

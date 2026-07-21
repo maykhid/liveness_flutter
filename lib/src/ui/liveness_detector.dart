@@ -157,11 +157,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
       } catch (_) {}
     }
     try {
-      final assisted =
-          widget.config.cameraMode == LivenessCameraMode.assisted;
-      final wantedDirection = assisted
-          ? CameraLensDirection.back
-          : CameraLensDirection.front;
+      final assisted = widget.config.cameraMode == LivenessCameraMode.assisted;
+      final wantedDirection =
+          assisted ? CameraLensDirection.back : CameraLensDirection.front;
 
       final cameras = await availableCameras();
       final camera = cameras.firstWhere(
@@ -193,8 +191,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
       _converter = FrameConverter(camera: camera, controller: controller);
       // The back camera isn't mirrored like the front one, so the
       // left/right sign convention flips in assisted mode.
-      final effectiveMirror = camera.lensDirection ==
-              CameraLensDirection.front
+      final effectiveMirror = camera.lensDirection == CameraLensDirection.front
           ? widget.config.mirrorYaw
           : !widget.config.mirrorYaw;
       _mapper = FaceMapper(
@@ -301,14 +298,14 @@ class _LivenessDetectorState extends State<LivenessDetector>
       // Unusable frame: pause with guidance rather than running detection
       // on garbage. Skips the (pointless) ML call entirely.
       if (config.enableQualityChecks && quality != null) {
-        final FaceGuidance? qualityIssue = quality.brightness <
-                config.brightnessMin
-            ? FaceGuidance.lowLight
-            : quality.brightness > config.brightnessMax
+        final FaceGuidance? qualityIssue =
+            quality.brightness < config.brightnessMin
                 ? FaceGuidance.lowLight
-                : quality.sharpness < config.sharpnessMin
-                    ? FaceGuidance.blurry
-                    : null;
+                : quality.brightness > config.brightnessMax
+                    ? FaceGuidance.lowLight
+                    : quality.sharpness < config.sharpnessMin
+                        ? FaceGuidance.blurry
+                        : null;
         if (qualityIssue != null) {
           _qualityViolations++;
           _session.onFrame(
@@ -355,8 +352,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
         faceInPosition: positionIssue == null,
         timestampMs: now,
         guidance: positionIssue ?? FaceGuidance.none,
-        spoofSuspected:
-            config.enableReplayGuard && _spoofGuard.replaySuspected,
+        spoofSuspected: config.enableReplayGuard && _spoofGuard.replaySuspected,
       );
       if (widget.showDebugOverlay && mounted) setState(() {});
     } catch (e, st) {
@@ -386,7 +382,8 @@ class _LivenessDetectorState extends State<LivenessDetector>
   void _onSessionEvent(LivenessEvent event) {
     switch (event) {
       case ReferenceReadyEvent():
-        if (widget.config.captureImages && widget.config.captureReferenceImage) {
+        if (widget.config.captureImages &&
+            widget.config.captureReferenceImage) {
           _captureFrame(null);
         }
       case ActionStartedEvent(:final action, :final index):
@@ -669,7 +666,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
               builder: (context, tint, _) => IgnorePointer(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 120),
-                  color: tint?.withOpacity(0.75) ?? Colors.transparent,
+                  color: tint?.withValues(alpha: .75) ?? Colors.transparent,
                   alignment: Alignment.center,
                   child: tint == null
                       ? null
@@ -752,7 +749,7 @@ class _DebugPanel extends StatelessWidget {
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: .6),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
