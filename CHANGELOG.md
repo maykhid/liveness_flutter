@@ -1,3 +1,7 @@
+# 0.4.3
+
+- Updated dependencies and minor improvements.
+
 # 0.4.2
 
 - Documentation: restyled README for pub.dev (no code changes).

@@ -1,7 +1,7 @@
 name: liveness_flutter
 description: >-
   Plug-and-play liveness detection for Flutter. Configure action sequences like blink and smile, capture images or video, and send verification results to your backend.
-version: 0.4.2
+version: 0.4.3
 homepage: https://github.com/maykhid/liveness_flutter
 repository: https://github.com/maykhid/liveness_flutter
 
@@ -12,8 +12,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  camera: ^0.11.0
-  google_mlkit_face_detection: ^0.13.0
+  camera: ^0.12.0+2
+  google_mlkit_face_detection: ^0.14.0
   image: ^4.3.0
   http: ^1.2.0
   screen_brightness: ^2.1.0
@@ -21,6 +21,6 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
 
 flutter:

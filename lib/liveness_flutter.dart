@@ -1,5 +1,5 @@
 /// Plug-and-play, customizable liveness detection for Flutter.
-library liveness_flutter;
+library;
 
 export 'src/camera/frame_quality.dart' show FrameQuality;
 export 'src/camera/liveness_capabilities.dart';
