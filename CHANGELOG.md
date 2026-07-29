@@ -1,3 +1,7 @@
+# 0.4.4
+
+- Updated README.md
+
 # 0.4.3
 
 - Updated dependencies and minor improvements.
