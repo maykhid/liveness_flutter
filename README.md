@@ -40,7 +40,7 @@ model downloads. No account.**
 | 🔌 **Any backend** | `onResult` hands you everything; built-in multipart uploader with progress, or bring dio/S3/Firebase/anything |
 | 🎨 **Fully yours** | theme every color and string (localizable), or replace whole UI layers with your own widgets |
 | 🧑‍🤝‍🧑 **Assisted mode** | agent points the back camera at the customer — torch lighting, auto-flipped left/right |
-| 🪶 **Featherlight** | pure Dart + Google ML Kit. No TensorFlow, no 20 MB downloads, minSdk 21 |
+| 🪶 **Featherlight** | pure Dart + Google ML Kit. No TensorFlow, no 20 MB downloads, minSdk 24 |
 
 ## 🚀 Quick start
 
@@ -76,7 +76,7 @@ LivenessDetector(
 
 ## ⚙️ Setting up Android and iOS
 
-**Android** — set `minSdkVersion 21` in your app.
+**Android** — set `minSdkVersion 24` in your app.
 
 **iOS** — add to `ios/Runner/Info.plist` (without it the app crashes on
 camera use):
