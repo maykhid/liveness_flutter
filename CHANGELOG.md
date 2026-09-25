@@ -25,8 +25,8 @@ Pre-1.0, so there are breaking changes; each is listed below.
   `ActionPeakEvent` case.
 - New `FaceGuidance.tooBright` value. Exhaustive `switch`es over
   `FaceGuidance` need a new case.
-- `onResult` can now run from `dispose()`, when the widget's context is
-  unmounted. Code that navigates in `onResult` must check `context.mounted`
+- `onResult` can now run right after `dispose()`, when the widget's context
+  is unmounted. Code that navigates in `onResult` must check `context.mounted`
   first (the README example now does).
 - `HttpLivenessUploader`'s `metadata` JSON is now `result.toJson()`: the
   diagnostics (`blink_ms`, `confidence_*`, `flashChallenge`, …) moved from
@@ -197,9 +197,10 @@ Pre-1.0, so there are breaking changes; each is listed below.
   platform call now runs in the background.
 - `onResult` was never called when the detector was removed before the
   session ended (route popped, system back), despite the "called exactly
-  once" promise. It is now delivered synchronously from `dispose()` as a
-  `cancelled` result, or with the real outcome if the session had already
-  ended. A throwing `onResult` there goes to `onError`.
+  once" promise. It is now built in `dispose()` and delivered on the next
+  microtask (so `onResult` may call `setState`) as a `cancelled` result, or
+  with the real outcome if the session had already ended. A throwing
+  `onResult` there goes to `onError`.
 - `HttpLivenessUploader` left out `sessionId` and `confidenceScore`, the two
   audit fields the README promotes. The `metadata` field is now
   `result.toJson()`, and the request carries an `X-Liveness-Session` header.

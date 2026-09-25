@@ -153,6 +153,37 @@ void main() {
       expect(results, hasLength(1));
     });
 
+    testWidgets('onResult from dispose may call setState on a parent',
+        (tester) async {
+      final errors = <Object>[];
+      var results = 0;
+      var show = true;
+      late StateSetter setHostState;
+      await tester.pumpWidget(MaterialApp(
+        home: StatefulBuilder(builder: (context, setState) {
+          setHostState = setState;
+          return Column(children: [
+            Text('results: $results'),
+            if (show)
+              Expanded(
+                child: LivenessDetector(
+                  config:
+                      const LivenessConfig(actions: [LivenessAction.smile]),
+                  onResult: (_) => setState(() => results++),
+                  onError: (e, _) => errors.add(e),
+                ),
+              ),
+          ]);
+        }),
+      ));
+      await tester.pump();
+      setHostState(() => show = false);
+      await tester.pump();
+      await tester.pump();
+      expect(errors, isEmpty);
+      expect(find.text('results: 1'), findsOneWidget);
+    });
+
     testWidgets('a throwing onResult during dispose goes to onError',
         (tester) async {
       final errors = <Object>[];

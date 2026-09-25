@@ -70,9 +70,9 @@ class LivenessDetector extends StatefulWidget {
   /// finished (route popped, system back).
   ///
   /// In that last case the result is `cancelled` with
-  /// `metadata['cancelledBy'] == 'dispose'`, it is delivered synchronously
-  /// from `dispose()` (not awaited), and **the widget's `BuildContext` is
-  /// already unmounted**. Guard navigation with `context.mounted`, e.g.
+  /// `metadata['cancelledBy'] == 'dispose'`, it is delivered on a microtask
+  /// right after `dispose()` (not awaited; calling `setState` elsewhere is
+  /// fine), and **the widget's `BuildContext` is already unmounted**. Guard navigation with `context.mounted`, e.g.
   /// `if (context.mounted) Navigator.pop(context, result);`. Captures still
   /// being encoded at that moment are not included.
   ///
@@ -963,8 +963,10 @@ class _LivenessRunState extends State<_LivenessRun>
     }
   }
 
-  /// Delivers the result from `dispose()`: synchronously, never awaited,
-  /// and shielded so a throwing `onResult` can't break teardown.
+  /// Delivers the result for a widget removed mid-session: built
+  /// synchronously in `dispose()`, handed to `onResult` on the next
+  /// microtask (never awaited), and shielded so a throwing `onResult` goes
+  /// to `onError`.
   void _deliverOnDispose() {
     if (_resultDelivered) return;
     _resultDelivered = true;
@@ -989,16 +991,23 @@ class _LivenessRunState extends State<_LivenessRun>
         reason: LivenessFailureReason.cancelled,
       );
     }
-    try {
-      final pending = _d.onResult(result);
-      if (pending is Future<void>) {
-        pending.catchError((Object e, StackTrace st) {
-          _d.onError?.call(e, st);
-        });
+    // Hand it over on a microtask: during dispose the framework has the
+    // element tree locked, so an onResult that calls setState (very
+    // common) would throw. The result is already built and captured.
+    final onResult = _d.onResult;
+    final onError = _d.onError;
+    scheduleMicrotask(() {
+      try {
+        final pending = onResult(result);
+        if (pending is Future<void>) {
+          pending.catchError((Object e, StackTrace st) {
+            onError?.call(e, st);
+          });
+        }
+      } catch (e, st) {
+        onError?.call(e, st);
       }
-    } catch (e, st) {
-      _d.onError?.call(e, st);
-    }
+    });
   }
 
   @override
