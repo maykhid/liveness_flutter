@@ -52,6 +52,8 @@ class LivenessDetector extends StatefulWidget {
     this.showDebugOverlay = false,
     this.controller,
     this.targetRegion,
+    this.instructionAlignment = const Alignment(0, 0.72),
+    this.closeButtonBuilder,
   });
 
   /// Read once, when the widget is first inserted. Changing it on a
@@ -109,7 +111,17 @@ class LivenessDetector extends StatefulWidget {
   /// Replaces the instruction panel.
   final LivenessWidgetBuilder? instructionBuilder;
 
+  /// Shows the close button (built-in, or [closeButtonBuilder]'s).
   final bool showCloseButton;
+
+  /// Builds your own close button; call `onClose` to cancel the session.
+  /// Placed at `theme.closeButtonAlignment` inside the safe area.
+  final Widget Function(BuildContext context, VoidCallback onClose)?
+      closeButtonBuilder;
+
+  /// Where the instruction panel sits.
+  final AlignmentGeometry instructionAlignment;
+
   final ResolutionPreset cameraResolution;
 
   /// Show live detection values on screen (euler angles, eye/smile
@@ -639,7 +651,7 @@ class _LivenessRunState extends State<_LivenessRun>
 
     // Let the final UI state (success/failure) render briefly before
     // handing off.
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(_d.theme.resultHoldDuration);
     if (_resultDelivered) return; // disposed meanwhile; already delivered
     _resultDelivered = true;
     await _d.onResult(result);
@@ -823,7 +835,7 @@ class _LivenessRunState extends State<_LivenessRun>
 
             // Instructions.
             Align(
-              alignment: const Alignment(0, 0.72),
+              alignment: _d.instructionAlignment,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: _d.instructionBuilder != null
@@ -842,7 +854,8 @@ class _LivenessRunState extends State<_LivenessRun>
               builder: (context, tint, _) => IgnorePointer(
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 120),
-                  color: tint?.withValues(alpha: .75) ?? Colors.transparent,
+                  color: tint?.withValues(alpha: _d.theme.flashTintOpacity) ??
+                      Colors.transparent,
                   alignment: Alignment.center,
                   child: tint == null
                       ? null
@@ -857,11 +870,13 @@ class _LivenessRunState extends State<_LivenessRun>
             if (_d.showCloseButton)
               SafeArea(
                 child: Align(
-                  alignment: Alignment.topLeft,
-                  child: IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white),
-                    onPressed: _cancel,
-                  ),
+                  alignment: _d.theme.closeButtonAlignment,
+                  child: _d.closeButtonBuilder?.call(context, _cancel) ??
+                      IconButton(
+                        icon: Icon(Icons.close, color: _d.theme.closeIconColor),
+                        tooltip: _d.theme.strings.close,
+                        onPressed: _cancel,
+                      ),
                 ),
               ),
 

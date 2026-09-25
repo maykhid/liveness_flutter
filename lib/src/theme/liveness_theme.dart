@@ -29,6 +29,10 @@ class LivenessTheme {
     this.ovalCenter = const Offset(0.5, 0.44),
     this.ovalAspectRatio = 1.35,
     this.ovalShape = TargetShape.oval,
+    this.closeIconColor = Colors.white,
+    this.closeButtonAlignment = Alignment.topLeft,
+    this.flashTintOpacity = 0.75,
+    this.resultHoldDuration = const Duration(milliseconds: 400),
     this.strings = const LivenessStrings(),
   });
 
@@ -46,6 +50,9 @@ class LivenessTheme {
   final Color progressTrackColor;
 
   final TextStyle instructionStyle;
+
+  /// Style of the guidance hint ("Move closer", "Find better lighting")
+  /// shown under the instruction.
   final TextStyle hintStyle;
   final TextStyle counterStyle;
 
@@ -66,6 +73,20 @@ class LivenessTheme {
   /// Shape of the target cut-out, which is also the detection zone.
   final TargetShape ovalShape;
 
+  /// Colour of the built-in close icon. Pick a dark one on light scrims.
+  final Color closeIconColor;
+
+  /// Where the built-in close button sits (inside the safe area).
+  final AlignmentGeometry closeButtonAlignment;
+
+  /// Opacity of the colour-flash challenge tint (0–1). Higher lights the
+  /// face more strongly.
+  final double flashTintOpacity;
+
+  /// How long the final success/failure state stays on screen before
+  /// `onResult` is called.
+  final Duration resultHoldDuration;
+
   final LivenessStrings strings;
 }
 
@@ -74,15 +95,15 @@ class LivenessStrings {
   const LivenessStrings({
     this.initializing = 'Starting camera…',
     this.searchingFace = 'Position your face in the oval',
-    this.centeringFace = 'Move closer and center your face',
+    this.centeringFace = 'Fit your face in the oval',
     this.multipleFaces = 'Only one face should be visible',
     this.awaitingNeutral = 'Return to a neutral expression',
     this.completed = 'All done!',
     this.failed = 'Verification failed',
     this.holdStill = 'Hold still…',
+    this.close = 'Close',
     this.guidanceMessages = const {
       FaceGuidance.noFace: 'Position your face in the oval',
-      FaceGuidance.multipleFaces: 'Only one face should be visible',
       FaceGuidance.tooFar: 'Move closer',
       FaceGuidance.tooClose: 'Move back a little',
       FaceGuidance.notCentered: 'Center your face in the oval',
@@ -110,6 +131,9 @@ class LivenessStrings {
   final String initializing;
   final String searchingFace;
   final String centeringFace;
+
+  /// Hint shown while more than one face is visible (unless
+  /// [guidanceMessages] has its own entry for [FaceGuidance.multipleFaces]).
   final String multipleFaces;
   final String awaitingNeutral;
   final String completed;
@@ -117,6 +141,9 @@ class LivenessStrings {
 
   /// Shown during the color-flash challenge.
   final String holdStill;
+
+  /// Tooltip and screen-reader label of the close button.
+  final String close;
 
   final Map<LivenessAction, String> actionInstructions;
 
@@ -127,5 +154,7 @@ class LivenessStrings {
   String instructionFor(LivenessAction action) =>
       actionInstructions[action] ?? action.name;
 
-  String? guidanceFor(FaceGuidance guidance) => guidanceMessages[guidance];
+  String? guidanceFor(FaceGuidance guidance) =>
+      guidanceMessages[guidance] ??
+      (guidance == FaceGuidance.multipleFaces ? multipleFaces : null);
 }

@@ -233,4 +233,83 @@ void main() {
       expect(inRegion.phase, LivenessPhase.performingAction);
     });
   });
+
+  group('C4 layout and styling hooks', () {
+    Future<List<LivenessResult>> pumpWith(
+      WidgetTester tester, {
+      LivenessTheme theme = const LivenessTheme(),
+      AlignmentGeometry instructionAlignment = const Alignment(0, 0.72),
+      Widget Function(BuildContext, VoidCallback)? closeButtonBuilder,
+    }) async {
+      usePhoneScreen(tester);
+      final results = <LivenessResult>[];
+      await tester.pumpWidget(MaterialApp(
+        home: LivenessDetector(
+          theme: theme,
+          instructionAlignment: instructionAlignment,
+          closeButtonBuilder: closeButtonBuilder,
+          config: const LivenessConfig(actions: [LivenessAction.smile]),
+          onResult: results.add,
+        ),
+      ));
+      await tester.pump();
+      return results;
+    }
+
+    testWidgets('instructionAlignment positions the instruction panel',
+        (tester) async {
+      await pumpWith(tester, instructionAlignment: Alignment.topCenter);
+      final align = tester.widget<Align>(find
+          .ancestor(
+            of: find.text('Position your face in the oval'),
+            matching: find.byType(Align),
+          )
+          .first);
+      expect(align.alignment, Alignment.topCenter);
+    });
+
+    testWidgets('close icon colour, alignment and tooltip come from theme',
+        (tester) async {
+      await pumpWith(
+        tester,
+        theme: const LivenessTheme(
+          closeIconColor: Colors.black,
+          closeButtonAlignment: Alignment.topRight,
+          strings: LivenessStrings(close: 'Schließen'),
+        ),
+      );
+      expect(tester.widget<Icon>(find.byIcon(Icons.close)).color,
+          Colors.black);
+      expect(find.byTooltip('Schließen'), findsOneWidget);
+      expect(tester.getCenter(find.byIcon(Icons.close)).dx,
+          greaterThan(360 / 2));
+    });
+
+    testWidgets('closeButtonBuilder replaces the button and can cancel',
+        (tester) async {
+      final results = await pumpWith(
+        tester,
+        closeButtonBuilder: (context, onClose) =>
+            TextButton(onPressed: onClose, child: const Text('Not now')),
+      );
+      expect(find.byIcon(Icons.close), findsNothing);
+      await tester.tap(find.text('Not now'));
+      await tester.pump(const Duration(seconds: 1));
+      expect(results.single.metadata['cancelledBy'], 'user');
+    });
+
+    testWidgets('resultHoldDuration delays onResult', (tester) async {
+      final results = await pumpWith(
+        tester,
+        theme: const LivenessTheme(
+          resultHoldDuration: Duration(milliseconds: 1500),
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump(const Duration(milliseconds: 1000));
+      expect(results, isEmpty);
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(results, hasLength(1));
+    });
+  });
 }

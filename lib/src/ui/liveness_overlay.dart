@@ -132,16 +132,21 @@ class DefaultInstructionPanel extends StatelessWidget {
   final LivenessSessionState state;
   final LivenessTheme theme;
 
+  /// What's wrong with the frame right now, shown under the instruction in
+  /// [LivenessTheme.hintStyle]; null when nothing is (or it would repeat
+  /// the instruction).
+  String? get _hint {
+    if (state.guidance == FaceGuidance.none ||
+        state.phase == LivenessPhase.completed ||
+        state.phase == LivenessPhase.failed) {
+      return null;
+    }
+    final hint = theme.strings.guidanceFor(state.guidance);
+    return hint == _instruction ? null : hint;
+  }
+
   String get _instruction {
     final s = theme.strings;
-    // Frame-specific problems take priority — they tell the user exactly
-    // what to fix right now.
-    if (state.guidance != FaceGuidance.none &&
-        state.phase != LivenessPhase.completed &&
-        state.phase != LivenessPhase.failed) {
-      final hint = s.guidanceFor(state.guidance);
-      if (hint != null) return hint;
-    }
     switch (state.phase) {
       case LivenessPhase.initializing:
         return s.initializing;
@@ -163,6 +168,7 @@ class DefaultInstructionPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hint = _hint;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -177,6 +183,15 @@ class DefaultInstructionPanel extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
         ),
+        if (hint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            key: const ValueKey('liveness-hint'),
+            style: theme.hintStyle,
+            textAlign: TextAlign.center,
+          ),
+        ],
         const SizedBox(height: 8),
         if (state.phase == LivenessPhase.performingAction)
           Text(

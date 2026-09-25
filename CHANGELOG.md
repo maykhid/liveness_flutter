@@ -31,6 +31,10 @@
 - The face-in-position test now follows the drawn target. Faces that
   passed the old loose centre check may now get `notCentered`, `tooFar` or
   `tooClose`; tune `ovalSizeFactor` or `targetFillMin`/`targetFillMax`.
+- The default `LivenessStrings.centeringFace` is now "Fit your face in the
+  oval" (it sits above a specific hint now), and `FaceGuidance.multipleFaces`
+  was removed from the default `guidanceMessages` map in favour of
+  `LivenessStrings.multipleFaces`.
 
 ### Added
 
@@ -77,6 +81,10 @@
   overlay's window drives detection; `DetectorTuning.targetFillMin` (0.15)
   and `targetFillMax` (1.0). The debug overlay draws the detected face box
   in screen space.
+- `LivenessDetector.instructionAlignment` and `closeButtonBuilder`;
+  `LivenessTheme.closeIconColor`, `closeButtonAlignment`, `flashTintOpacity`
+  and `resultHoldDuration`; `LivenessStrings.close` (close-button tooltip and
+  screen-reader label).
 
 ### Fixed
 
@@ -131,6 +139,12 @@
   `ovalSizeFactor` said. The drawn target is now mapped into camera space
   (cover-fit, sensor rotation, front-camera mirror) and the face must have
   its centre inside it and fill it within `targetFillMin`–`targetFillMax`.
+- `LivenessTheme.hintStyle` and `LivenessStrings.multipleFaces` were declared
+  but never used. Guidance hints ("Move closer", "Find better lighting") are
+  now shown in `hintStyle` under the current instruction instead of replacing
+  it, and `multipleFaces` is the multiple-faces hint unless
+  `guidanceMessages` has its own entry. The close icon was always white
+  (invisible on light scrims).
 
 # 0.4.4
 
