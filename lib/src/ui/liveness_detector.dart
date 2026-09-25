@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart' show ResolutionPreset;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:screen_brightness/screen_brightness.dart';
 
 import '../camera/detection_geometry.dart';
@@ -54,6 +55,7 @@ class LivenessDetector extends StatefulWidget {
     this.targetRegion,
     this.instructionAlignment = const Alignment(0, 0.72),
     this.closeButtonBuilder,
+    this.onFeedback,
   });
 
   /// Read once, when the widget is first inserted. Changing it on a
@@ -97,6 +99,11 @@ class LivenessDetector extends StatefulWidget {
       onActionCompleted;
 
   final void Function(Object error, StackTrace stackTrace)? onError;
+
+  /// Moments to react to with your own sounds, haptics or text-to-speech:
+  /// action started, half-way, completed; session passed or failed. Never
+  /// awaited. See also [LivenessConfig.hapticFeedback].
+  final void Function(LivenessFeedback event)? onFeedback;
 
   /// Replaces the scrim/oval overlay entirely. The built-in oval still
   /// defines where the face must be unless you also set [targetRegion].
@@ -271,7 +278,48 @@ class _LivenessRunState extends State<_LivenessRun>
     _init();
   }
 
-  void _onStateChanged() => widget.controller._scheduleNotify();
+  /// Index of the action whose half-way feedback already fired.
+  int? _halfFeedbackIndex;
+
+  void _onStateChanged() {
+    widget.controller._scheduleNotify();
+    final state = _session.current;
+    final action = state.currentAction;
+    if (state.phase == LivenessPhase.performingAction &&
+        action != null &&
+        state.actionProgress >= 0.5 &&
+        _halfFeedbackIndex != state.currentActionIndex) {
+      _halfFeedbackIndex = state.currentActionIndex;
+      _feedback(LivenessFeedback(
+        LivenessFeedbackType.actionProgressHalf,
+        action: action,
+        index: state.currentActionIndex,
+      ));
+    }
+  }
+
+  void _feedback(LivenessFeedback event) {
+    final onFeedback = _d.onFeedback;
+    if (onFeedback != null) {
+      try {
+        onFeedback(event);
+      } catch (e, st) {
+        _d.onError?.call(e, st);
+      }
+    }
+    if (!_d.config.hapticFeedback) return;
+    switch (event.type) {
+      case LivenessFeedbackType.actionCompleted:
+        HapticFeedback.lightImpact();
+      case LivenessFeedbackType.sessionSucceeded:
+        HapticFeedback.mediumImpact();
+      case LivenessFeedbackType.sessionFailed
+          when event.reason != LivenessFailureReason.cancelled:
+        HapticFeedback.heavyImpact();
+      default:
+        break;
+    }
+  }
 
   @override
   void didUpdateWidget(_LivenessRun oldWidget) {
@@ -490,6 +538,11 @@ class _LivenessRunState extends State<_LivenessRun>
       case ActionStartedEvent(:final action, :final index):
         _peak = null;
         _d.onActionStarted?.call(action, index);
+        _feedback(LivenessFeedback(
+          LivenessFeedbackType.actionStarted,
+          action: action,
+          index: index,
+        ));
       case ActionPeakEvent(:final index, :final timestampMs):
         final frame = _analysedFrame;
         if (frame != null) {
@@ -497,6 +550,11 @@ class _LivenessRunState extends State<_LivenessRun>
         }
       case ActionCompletedEvent(:final action, :final index):
         _d.onActionCompleted?.call(action, index);
+        _feedback(LivenessFeedback(
+          LivenessFeedbackType.actionCompleted,
+          action: action,
+          index: index,
+        ));
         if (_d.config.captureImages) {
           final peak = _peak;
           if (_d.config.captureAtPeak &&
@@ -514,6 +572,9 @@ class _LivenessRunState extends State<_LivenessRun>
         }
         _peak = null;
       case SessionCompletedEvent():
+        _feedback(const LivenessFeedback(
+          LivenessFeedbackType.sessionSucceeded,
+        ));
         final assisted =
             _d.config.cameraMode == LivenessCameraMode.assisted;
         if (_d.config.enableFlashChallenge && !assisted) {
@@ -527,6 +588,10 @@ class _LivenessRunState extends State<_LivenessRun>
           _finish(success: true);
         }
       case SessionFailedEvent(:final reason):
+        _feedback(LivenessFeedback(
+          LivenessFeedbackType.sessionFailed,
+          reason: reason,
+        ));
         _finish(success: false, reason: reason);
     }
   }

@@ -92,6 +92,11 @@
   `failureMessages` (per `LivenessFailureReason`, shown on the failed
   screen), `failureFor()`, the `default*` maps, and `copyWith` on
   `LivenessTheme` and `LivenessStrings`.
+- `LivenessDetector.onFeedback` with `LivenessFeedback` events
+  (`actionStarted`, `actionProgressHalf`, `actionCompleted`,
+  `sessionSucceeded`, `sessionFailed`) for sounds, haptics or TTS;
+  `LivenessConfig.hapticFeedback` (opt-in); the instruction text is now a
+  screen-reader live region, so each new instruction is announced.
 
 ### Fixed
 

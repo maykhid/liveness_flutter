@@ -172,15 +172,19 @@ class DefaultInstructionPanel extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          child: Text(
-            _instruction,
-            key: ValueKey(_instruction),
-            style: state.phase == LivenessPhase.failed
-                ? theme.instructionStyle.copyWith(color: theme.failureColor)
-                : theme.instructionStyle,
-            textAlign: TextAlign.center,
+        // Live region: screen readers announce each new instruction.
+        Semantics(
+          liveRegion: true,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              _instruction,
+              key: ValueKey(_instruction),
+              style: state.phase == LivenessPhase.failed
+                  ? theme.instructionStyle.copyWith(color: theme.failureColor)
+                  : theme.instructionStyle,
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
         if (hint != null) ...[

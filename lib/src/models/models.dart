@@ -150,6 +150,46 @@ enum LivenessPhase {
   failed,
 }
 
+/// Moments worth a sound, a haptic or a TTS prompt. See
+/// `LivenessDetector.onFeedback`.
+enum LivenessFeedbackType {
+  /// A new action became the current instruction.
+  actionStarted,
+
+  /// The current action passed 50 % progress (once per action).
+  actionProgressHalf,
+
+  /// The current action was completed.
+  actionCompleted,
+
+  /// The whole session passed.
+  sessionSucceeded,
+
+  /// The session failed or was cancelled; see [LivenessFeedback.reason].
+  sessionFailed,
+}
+
+/// One feedback moment, handed to `LivenessDetector.onFeedback`.
+class LivenessFeedback {
+  const LivenessFeedback(this.type, {this.action, this.index, this.reason});
+
+  final LivenessFeedbackType type;
+
+  /// The action concerned (action events only).
+  final LivenessAction? action;
+
+  /// Its position in the executed order (action events only).
+  final int? index;
+
+  /// Why the session failed ([LivenessFeedbackType.sessionFailed] only).
+  final LivenessFailureReason? reason;
+
+  @override
+  String toString() => 'LivenessFeedback(${type.name}'
+      '${action == null ? '' : ', ${action!.name} #$index'}'
+      '${reason == null ? '' : ', ${reason!.name}'})';
+}
+
 /// A normalized, ML-Kit-independent snapshot of one detected face on one
 /// frame. All positional values are normalized to the image size (0..1).
 ///
@@ -449,6 +489,7 @@ class LivenessConfig {
     this.boostScreenBrightness = true,
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
+    this.hapticFeedback = false,
   })  : assert(jpegQuality >= 1 && jpegQuality <= 100,
             'jpegQuality must be 1–100'),
         assert(maxImageDimension >= 64, 'maxImageDimension must be ≥ 64'),
@@ -655,6 +696,12 @@ class LivenessConfig {
   /// does that job, faces the operator instead). Best-effort: ignored on
   /// devices without a torch.
   final bool assistedTorchEnabled;
+
+  /// Light haptic tick when an action completes (useful for
+  /// [LivenessAction.eyesClosed], which the user can't see finish), and a
+  /// stronger one when the session passes or fails (not on a cancel).
+  /// Opt-in. For sounds or TTS, use `LivenessDetector.onFeedback`.
+  final bool hapticFeedback;
 
   bool get captureImages => capture.contains(CaptureType.images);
   bool get captureVideo => capture.contains(CaptureType.video);

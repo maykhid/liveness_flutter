@@ -405,6 +405,11 @@ check too.
   (if it doesn't sit on your face, please open an issue with your device). Perfect for tuning `DetectorTuning` thresholds on real devices.
 - **Per-action callbacks** — `onActionStarted` / `onActionCompleted`
   (sync or async; never awaited, so detection never stalls on your code).
+- **Feedback & accessibility** — `onFeedback` fires on action started,
+  half-way, completed, and session passed/failed, for your own sounds,
+  haptics or text-to-speech. `hapticFeedback: true` adds built-in haptics
+  (handy for `eyesClosed`, which users can't see finish). Instructions are
+  a screen-reader live region, so each new one is announced.
 - **Session log** — `debugPrint(result.toString())` prints a readable
   block: actions, timings, confidence penalties, media counts.
 - **Guidance state** — `state.guidance` tells you exactly what's wrong
