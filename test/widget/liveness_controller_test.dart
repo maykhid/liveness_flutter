@@ -17,6 +17,7 @@ void main() {
     List<LivenessAction> actions = const [LivenessAction.smile],
     bool shuffle = false,
   }) async {
+    usePhoneScreen(tester);
     controller = LivenessController();
     addTearDown(controller.dispose);
     results = [];

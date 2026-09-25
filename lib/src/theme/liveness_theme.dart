@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../camera/detection_geometry.dart';
 import '../models/models.dart';
 
 /// Visual + textual customization for the built-in liveness UI.
@@ -25,6 +26,9 @@ class LivenessTheme {
     this.successColor = const Color(0xFF4CAF50),
     this.failureColor = const Color(0xFFE53935),
     this.ovalSizeFactor = 0.72,
+    this.ovalCenter = const Offset(0.5, 0.44),
+    this.ovalAspectRatio = 1.35,
+    this.ovalShape = TargetShape.oval,
     this.strings = const LivenessStrings(),
   });
 
@@ -48,8 +52,19 @@ class LivenessTheme {
   final Color successColor;
   final Color failureColor;
 
-  /// Oval width as a fraction of the preview's shorter side.
+  /// Target width as a fraction of the view's shorter side. Also sets the
+  /// detection zone: the face must fill this target (see
+  /// [DetectorTuning.targetFillMin]).
   final double ovalSizeFactor;
+
+  /// Target centre, normalised to the view (0..1).
+  final Offset ovalCenter;
+
+  /// Target height / width. Ignored for [TargetShape.circle].
+  final double ovalAspectRatio;
+
+  /// Shape of the target cut-out, which is also the detection zone.
+  final TargetShape ovalShape;
 
   final LivenessStrings strings;
 }

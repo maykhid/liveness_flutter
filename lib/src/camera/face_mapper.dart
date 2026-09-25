@@ -25,17 +25,22 @@ class FaceMapper {
   /// the raw buffer frame. Pass `Platform.isAndroid`.
   final bool uprightCoordinates;
 
+  /// The size face coordinates are normalised by: the rotated (upright)
+  /// size on Android, the raw buffer size on iOS.
+  Size faceSpaceSize(Size imageSize, InputImageRotation rotation) {
+    final swap = uprightCoordinates &&
+        (rotation == InputImageRotation.rotation90deg ||
+            rotation == InputImageRotation.rotation270deg);
+    return swap ? Size(imageSize.height, imageSize.width) : imageSize;
+  }
+
   FaceSnapshot map(
     Face face, {
     required Size imageSize,
     required InputImageRotation rotation,
     required int timestampMs,
   }) {
-    final swap = uprightCoordinates &&
-        (rotation == InputImageRotation.rotation90deg ||
-            rotation == InputImageRotation.rotation270deg);
-    final upright =
-        swap ? Size(imageSize.height, imageSize.width) : imageSize;
+    final upright = faceSpaceSize(imageSize, rotation);
 
     final w = upright.width == 0 ? 1.0 : upright.width;
     final h = upright.height == 0 ? 1.0 : upright.height;

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../detection/flash_challenge.dart';
+import 'detection_geometry.dart';
 import '../models/models.dart';
 import 'face_mapper.dart';
 import 'frame_converter.dart';
@@ -34,6 +35,10 @@ abstract class LivenessFrameSource {
 
   /// The camera preview, or null until [start] has completed.
   Widget? buildPreview(BuildContext context);
+
+  /// How face coordinates relate to the displayed preview, or null until
+  /// known (after the first [detectFaces]).
+  CameraGeometry? get geometry;
 
   /// Cheap brightness / sharpness / hash metrics.
   FrameQuality? analyzeQuality(Object frame);
@@ -99,6 +104,8 @@ class CameraFrameSource implements LivenessFrameSource {
   FaceDetector? _faceDetector;
   FrameConverter? _converter;
   FaceMapper? _mapper;
+  CameraDescription? _camera;
+  CameraGeometry? _geometry;
   bool _videoActive = false;
   Timer? _videoWatchdog;
   int _framesSeen = 0;
@@ -165,6 +172,7 @@ class CameraFrameSource implements LivenessFrameSource {
     }
 
     _controller = controller;
+    _camera = camera;
     _converter = FrameConverter(camera: camera, controller: controller);
     // The back camera isn't mirrored like the front one, so the
     // left/right sign convention flips in assisted mode.
@@ -221,6 +229,9 @@ class CameraFrameSource implements LivenessFrameSource {
   }
 
   @override
+  CameraGeometry? get geometry => _geometry;
+
+  @override
   FrameQuality? analyzeQuality(Object frame) =>
       FrameQualityAnalyzer.analyze(frame as CameraImage);
 
@@ -237,6 +248,11 @@ class CameraFrameSource implements LivenessFrameSource {
 
     final faces = await detector.processImage(inputImage);
     final metadata = inputImage.metadata!;
+    _geometry = (
+      faceSpaceSize: mapper.faceSpaceSize(metadata.size, metadata.rotation),
+      rotationDegrees: metadata.rotation.rawValue,
+      mirrored: _camera?.lensDirection == CameraLensDirection.front,
+    );
     return faces
         .map((f) => mapper.map(
               f,

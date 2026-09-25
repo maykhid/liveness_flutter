@@ -16,6 +16,7 @@ void main() {
       capture: {CaptureType.images},
     ),
   }) async {
+    usePhoneScreen(tester);
     final results = <LivenessResult>[];
     await tester.pumpWidget(MaterialApp(
       home: LivenessDetector(
@@ -163,6 +164,73 @@ void main() {
       await tester.pump();
       await tester.pumpWidget(const MaterialApp(home: SizedBox()));
       expect(errors.whereType<StateError>(), hasLength(1));
+    });
+  });
+
+  group('C3 detection follows the drawn target', () {
+    Future<LivenessSessionState> positionWith(
+      WidgetTester tester,
+      FaceSnapshot f, {
+      LivenessTheme theme = const LivenessTheme(),
+      Rect? targetRegion,
+    }) async {
+      usePhoneScreen(tester);
+      final controller = LivenessController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(MaterialApp(
+        home: LivenessDetector(
+          controller: controller,
+          theme: theme,
+          targetRegion: targetRegion,
+          config: const LivenessConfig(actions: [LivenessAction.smile]),
+          onResult: (_) {},
+        ),
+      ));
+      await tester.pump();
+      await harness.step(tester, [f]);
+      return controller.state;
+    }
+
+    testWidgets('the default oval accepts a centred face', (tester) async {
+      final state = await positionWith(tester, face());
+      expect(state.phase, LivenessPhase.performingAction);
+    });
+
+    testWidgets('shrinking ovalSizeFactor makes the same face too close',
+        (tester) async {
+      final state = await positionWith(
+        tester,
+        face(),
+        theme: const LivenessTheme(ovalSizeFactor: 0.3),
+      );
+      expect(state.phase, LivenessPhase.centeringFace);
+      expect(state.guidance, FaceGuidance.tooClose);
+    });
+
+    testWidgets('moving the oval makes a centred face not centred',
+        (tester) async {
+      final state = await positionWith(
+        tester,
+        face(box: const Rect.fromLTWH(0.4, 0.4, 0.2, 0.2)),
+        theme: const LivenessTheme(ovalCenter: Offset(0.5, 0.2)),
+      );
+      expect(state.guidance, FaceGuidance.notCentered);
+    });
+
+    testWidgets('targetRegion drives detection (and accounts for the mirror)',
+        (tester) async {
+      // Top-left of the screen = top-right of the unmirrored camera image.
+      const region = Rect.fromLTWH(0.05, 0.05, 0.4, 0.25);
+      final centred = await positionWith(tester, face(), targetRegion: region);
+      expect(centred.faceInPosition, isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+      final inRegion = await positionWith(
+        tester,
+        face(box: const Rect.fromLTWH(0.605, 0.075, 0.2, 0.2)),
+        targetRegion: region,
+      );
+      expect(inRegion.phase, LivenessPhase.performingAction);
     });
   });
 }

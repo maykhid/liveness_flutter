@@ -210,8 +210,10 @@ final uploader = LivenessUploader.custom((result) async {
 
 ## 🎨 Making it look like your app
 
-- `LivenessTheme` — colors, borders, text styles, oval size, and **every
-  piece of text** (so you can translate it).
+- `LivenessTheme` — colors, borders, text styles, the target's size,
+  position and shape (oval, circle or rounded rectangle; this is also where
+  the face must be), and **every piece of text** (so you can translate
+  it).
 - `overlayBuilder` / `instructionBuilder` — swap out the dimmed overlay or
   the instruction area entirely with your own widgets. Both receive the
   live session state and rebuild on every change. Useful fields:
@@ -268,9 +270,12 @@ overlayBuilder: (context, state) => Stack(fit: StackFit.expand, children: [
 ]),
 ```
 
-Tip: if you draw your own overlay shape, keep the "window" roughly
-centered — the face-position check expects the face near the middle of the
-frame. The example app has a full working custom UI behind a toggle.
+Tip: the face must be inside the target that's drawn. With the built-in
+overlay that's the theme's oval (`ovalSizeFactor`, `ovalCenter`,
+`ovalAspectRatio`, `ovalShape`). If you draw your own window, tell the
+detector where it is with `targetRegion` (normalised to the widget, e.g.
+`Rect.fromLTWH(0.15, 0.2, 0.7, 0.5)`); otherwise the theme's oval still
+decides. The example app has a full working custom UI behind a toggle.
 
 </details>
 
@@ -391,7 +396,8 @@ check too.
 
 - **Debug overlay** — `showDebugOverlay: true` shows live head angles,
   eye/smile probabilities, brightness, and replay-guard counters on
-  screen. Perfect for tuning `DetectorTuning` thresholds on real devices.
+  screen, and draws a green box where the detector thinks your face is
+  (if it doesn't sit on your face, please open an issue with your device). Perfect for tuning `DetectorTuning` thresholds on real devices.
 - **Per-action callbacks** — `onActionStarted` / `onActionCompleted`
   (sync or async; never awaited, so detection never stalls on your code).
 - **Session log** — `debugPrint(result.toString())` prints a readable

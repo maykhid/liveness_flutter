@@ -1,6 +1,7 @@
 /// Plug-and-play, customizable liveness detection for Flutter.
 library;
 
+export 'src/camera/detection_geometry.dart' show TargetShape;
 export 'src/camera/frame_quality.dart' show FrameQuality;
 export 'src/camera/liveness_capabilities.dart';
 export 'src/detection/flash_challenge.dart' show FlashChallenge;

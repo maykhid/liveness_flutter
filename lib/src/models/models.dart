@@ -373,6 +373,8 @@ class DetectorTuning {
     this.circleWindow = const Duration(seconds: 10),
     this.circleMinRadius = 6,
     this.secondaryFaceMinAreaRatio = 0.35,
+    this.targetFillMin = 0.15,
+    this.targetFillMax = 1.0,
   });
 
   final double blinkClosedThreshold;
@@ -404,6 +406,15 @@ class DetectorTuning {
   /// face's area are ignored: a poster, a TV, or someone far behind the
   /// user shouldn't count as a second face.
   final double secondaryFaceMinAreaRatio;
+
+  /// Face bounding-box area as a fraction of the on-screen target's
+  /// bounding-rect area. Below [targetFillMin] the user is told to move
+  /// closer ([FaceGuidance.tooFar]); above [targetFillMax], to move back
+  /// ([FaceGuidance.tooClose]).
+  final double targetFillMin;
+
+  /// See [targetFillMin].
+  final double targetFillMax;
 }
 
 /// Configuration for a liveness session.

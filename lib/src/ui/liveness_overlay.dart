@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../camera/detection_geometry.dart';
 import '../models/models.dart';
 import '../theme/liveness_theme.dart';
 
@@ -17,26 +18,57 @@ class LivenessOverlayPainter extends CustomPainter {
   final double progress;
   final LivenessPhase phase;
 
-  /// The oval used both for painting and for the face-in-position test.
-  static Rect ovalRect(Size size, double sizeFactor) {
-    final shortest = size.shortestSide;
-    final width = shortest * sizeFactor;
-    final height = width * 1.35;
+  /// The target's bounding rect in [size] (pixels). The detector maps the
+  /// same rect into camera space for the face-in-position test, so what is
+  /// drawn is what is checked.
+  static Rect targetRect(Size size, LivenessTheme theme) {
+    final width = size.shortestSide * theme.ovalSizeFactor;
+    final height =
+        theme.ovalShape == TargetShape.circle ? width : width * theme.ovalAspectRatio;
     return Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.44),
+      center: Offset(
+        size.width * theme.ovalCenter.dx,
+        size.height * theme.ovalCenter.dy,
+      ),
       width: width,
       height: height,
     );
   }
 
+  /// [targetRect] normalised to [size] (0..1), as used for detection.
+  static Rect normalizedTargetRect(Size size, LivenessTheme theme) {
+    final r = targetRect(size, theme);
+    return Rect.fromLTRB(
+      r.left / size.width,
+      r.top / size.height,
+      r.right / size.width,
+      r.bottom / size.height,
+    );
+  }
+
+  Path _shapePath(Rect rect) {
+    final path = Path();
+    switch (theme.ovalShape) {
+      case TargetShape.oval:
+      case TargetShape.circle:
+        path.addOval(rect);
+      case TargetShape.roundedRect:
+        path.addRRect(RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(rect.shortestSide * 0.18),
+        ));
+    }
+    return path;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final oval = ovalRect(size, theme.ovalSizeFactor);
+    final oval = targetRect(size, theme);
 
-    // Scrim with oval cutout.
+    // Scrim with target cutout.
     final scrim = Path()
       ..addRect(Offset.zero & size)
-      ..addOval(oval)
+      ..addPath(_shapePath(oval), Offset.zero)
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(scrim, Paint()..color = theme.backgroundColor);
 
@@ -46,8 +78,8 @@ class LivenessOverlayPainter extends CustomPainter {
       LivenessPhase.failed => theme.failureColor,
       _ => faceInPosition ? theme.ovalBorderColorActive : theme.ovalBorderColor,
     };
-    canvas.drawOval(
-      oval,
+    canvas.drawPath(
+      _shapePath(oval),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = theme.ovalBorderWidth

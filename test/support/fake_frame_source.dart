@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
+import 'package:liveness_flutter/src/camera/detection_geometry.dart';
 import 'package:liveness_flutter/src/camera/frame_source.dart';
 
 /// A scripted frame: the faces "ML Kit" will report, and optional quality.
@@ -22,6 +23,14 @@ class FakeFrameSource implements LivenessFrameSource {
   final DateTime _t0 = TestWidgetsFlutterBinding.instance.clock.now();
   void Function(Object frame)? _onFrame;
   int _nextId = 0;
+
+  /// Portrait phone camera with upright coordinates, front lens.
+  @override
+  CameraGeometry? geometry = (
+    faceSpaceSize: const Size(720, 1280),
+    rotationDegrees: 270,
+    mirrored: true,
+  );
 
   bool started = false;
   bool stopped = false;
@@ -168,4 +177,12 @@ class FakeSourceHarness {
       await step(tester, faces);
     }
   }
+}
+
+/// A 360×780 portrait phone screen (the camera geometry above assumes
+/// portrait). Resets itself after the test.
+void usePhoneScreen(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.devicePixelRatio = 3;
+  addTearDown(tester.view.reset);
 }

@@ -28,6 +28,9 @@
   changed from `<action>_<index>.jpg` to `<action>_<kind>_<t>ms.jpg`.
 - `HttpLivenessUploader.upload()` now throws on non-2xx responses and on
   timeouts (60 s per attempt by default). Wrap it in `try`/`catch`.
+- The face-in-position test now follows the drawn target. Faces that
+  passed the old loose centre check may now get `notCentered`, `tooFar` or
+  `tooClose`; tune `ovalSizeFactor` or `targetFillMin`/`targetFillMax`.
 
 ### Added
 
@@ -68,6 +71,12 @@
 - `LivenessSessionState.actionPlan` (the executed order, from the first
   state), `actionTimeout` and `sessionRemaining`. `tick()` keeps `remaining`
   and `sessionRemaining` counting down when frames stall.
+- `LivenessTheme.ovalCenter` (default `Offset(0.5, 0.44)`),
+  `ovalAspectRatio` (default 1.35) and `ovalShape` (`TargetShape.oval` |
+  `roundedRect` | `circle`); `LivenessDetector.targetRegion` so a custom
+  overlay's window drives detection; `DetectorTuning.targetFillMin` (0.15)
+  and `targetFillMax` (1.0). The debug overlay draws the detected face box
+  in screen space.
 
 ### Fixed
 
@@ -117,6 +126,11 @@
 - `HttpLivenessUploader.upload()` completed normally on any HTTP status,
   including 500. It now throws `LivenessUploadException(statusCode, body)` for
   non-2xx responses (after `onResponse` has seen them).
+- The on-screen oval had no effect on detection: the face-position check
+  used the image centre ±25 % and a 4–75 % face area, whatever
+  `ovalSizeFactor` said. The drawn target is now mapped into camera space
+  (cover-fit, sensor rotation, front-camera mirror) and the face must have
+  its centre inside it and fill it within `targetFillMin`–`targetFillMax`.
 
 # 0.4.4
 

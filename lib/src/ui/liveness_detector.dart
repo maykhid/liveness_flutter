@@ -7,6 +7,7 @@ import 'package:camera/camera.dart' show ResolutionPreset;
 import 'package:flutter/material.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
+import '../camera/detection_geometry.dart';
 import '../camera/frame_quality.dart';
 import '../camera/frame_source.dart';
 import '../controller/liveness_session.dart';
@@ -50,6 +51,7 @@ class LivenessDetector extends StatefulWidget {
     this.cameraResolution = ResolutionPreset.high,
     this.showDebugOverlay = false,
     this.controller,
+    this.targetRegion,
   });
 
   /// Read once, when the widget is first inserted. Changing it on a
@@ -94,8 +96,15 @@ class LivenessDetector extends StatefulWidget {
 
   final void Function(Object error, StackTrace stackTrace)? onError;
 
-  /// Replaces the scrim/oval overlay entirely.
+  /// Replaces the scrim/oval overlay entirely. The built-in oval still
+  /// defines where the face must be unless you also set [targetRegion].
   final LivenessWidgetBuilder? overlayBuilder;
+
+  /// Where on screen the face must be, normalised to the widget (0..1),
+  /// e.g. `Rect.fromLTWH(0.15, 0.2, 0.7, 0.5)`. Use it with a custom
+  /// [overlayBuilder] so your own window drives detection. Its shape is
+  /// `theme.ovalShape`. When null, the theme's oval is used.
+  final Rect? targetRegion;
 
   /// Replaces the instruction panel.
   final LivenessWidgetBuilder? instructionBuilder;
@@ -220,6 +229,7 @@ class _LivenessRunState extends State<_LivenessRun>
   final SpoofGuard _spoofGuard = SpoofGuard();
   FlashChallenge? _flashChallenge;
   final ValueNotifier<Color?> _flashTint = ValueNotifier(null);
+  Size? _viewSize;
   double _flashPenalty = 0;
   late final String _sessionId;
   FrameQuality? _lastQuality;
@@ -394,7 +404,7 @@ class _LivenessRunState extends State<_LivenessRun>
           ? FaceGuidance.noFace
           : relevant.length > 1
               ? FaceGuidance.multipleFaces
-              : _positionIssue(primary);
+              : _positionIssueFor(primary);
 
       _analysedFrame = image;
       _session.onFrame(
@@ -412,11 +422,40 @@ class _LivenessRunState extends State<_LivenessRun>
     }
   }
 
-  /// Returns the specific positioning problem, or null when the face is
-  /// usable. Uses box *area* rather than width so the check works whether
-  /// coordinates are in portrait (Android upright) or landscape (iOS
-  /// buffer) space.
-  FaceGuidance? _positionIssue(FaceSnapshot face) {
+  /// Maps the on-screen target (the theme's oval, or [LivenessDetector
+  /// .targetRegion]) into face space. Null until the view size and camera
+  /// geometry are known.
+  DetectionGeometry? _geometry() {
+    final view = _viewSize;
+    final camera = _source.geometry;
+    if (view == null || view.isEmpty || camera == null) return null;
+    return DetectionGeometry(
+      viewSize: view,
+      faceSpaceSize: camera.faceSpaceSize,
+      rotationDegrees: camera.rotationDegrees,
+      mirrored: camera.mirrored,
+    );
+  }
+
+  /// The specific positioning problem, or null when the face is in the
+  /// target drawn on screen.
+  FaceGuidance? _positionIssueFor(FaceSnapshot face) {
+    final geometry = _geometry();
+    final view = _viewSize;
+    if (geometry == null || view == null) return _fallbackPositionIssue(face);
+    final screenRect = _d.targetRegion ??
+        LivenessOverlayPainter.normalizedTargetRect(view, _d.theme);
+    final zone = TargetZone(
+      geometry.viewRectToFace(screenRect),
+      _d.theme.ovalShape,
+    );
+    return zone.issueFor(face, _d.config.tuning);
+  }
+
+  /// Used only before the view and camera geometry are known: the face
+  /// must be near the image centre at a sensible size. Box *area* works
+  /// whether coordinates are portrait or landscape.
+  FaceGuidance? _fallbackPositionIssue(FaceSnapshot face) {
     final box = face.boundingBox;
     final area = box.width * box.height;
     if (area <= 0.04) return FaceGuidance.tooFar;
@@ -751,6 +790,14 @@ class _LivenessRunState extends State<_LivenessRun>
   @override
   Widget build(BuildContext context) {
     final preview = _sourceReady ? _source.buildPreview(context) : null;
+    return LayoutBuilder(builder: (context, constraints) {
+      // Detection maps the on-screen target using the size it's drawn at.
+      _viewSize = constraints.biggest;
+      return _buildLayers(preview);
+    });
+  }
+
+  Widget _buildLayers(Widget? preview) {
     return ValueListenableBuilder<LivenessSessionState>(
       valueListenable: _session.state,
       builder: (context, state, _) {
@@ -819,6 +866,16 @@ class _LivenessRunState extends State<_LivenessRun>
               ),
 
             if (_d.showDebugOverlay)
+              IgnorePointer(
+                child: CustomPaint(
+                  painter: _DebugFaceBoxPainter(
+                    box: _lastSnapshot?.boundingBox,
+                    geometry: _geometry(),
+                  ),
+                ),
+              ),
+
+            if (_d.showDebugOverlay)
               SafeArea(
                 child: Align(
                   alignment: Alignment.topRight,
@@ -835,6 +892,40 @@ class _LivenessRunState extends State<_LivenessRun>
       },
     );
   }
+}
+
+/// Draws the detected face box where the detector thinks it is on screen.
+/// If it sits on the face, the screen → camera mapping is right for this
+/// device.
+class _DebugFaceBoxPainter extends CustomPainter {
+  _DebugFaceBoxPainter({required this.box, required this.geometry});
+
+  final Rect? box;
+  final DetectionGeometry? geometry;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final b = box;
+    final g = geometry;
+    if (b == null || g == null) return;
+    final r = g.faceRectToView(b);
+    canvas.drawRect(
+      Rect.fromLTRB(
+        r.left * size.width,
+        r.top * size.height,
+        r.right * size.width,
+        r.bottom * size.height,
+      ),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..color = Colors.greenAccent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_DebugFaceBoxPainter old) =>
+      old.box != box || old.geometry != geometry;
 }
 
 /// Live detection values for development and threshold tuning.
