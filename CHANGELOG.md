@@ -77,6 +77,8 @@
   `Random.secure()`, since the shuffle is an anti-replay measure.
 - `google_mlkit_face_detection` now allows `>=0.14.0 <0.16.0`. 0.15.x needs
   Flutter 3.44 / Dart 3.12; older SDKs keep resolving to 0.14.
+- Raising the screen brightness no longer delays camera start: the
+  platform call now runs in the background.
 
 # 0.4.4
 

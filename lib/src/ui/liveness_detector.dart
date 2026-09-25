@@ -3,15 +3,12 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:camera/camera.dart';
-import 'package:flutter/foundation.dart' show compute;
+import 'package:camera/camera.dart' show ResolutionPreset;
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
-import '../camera/face_mapper.dart';
-import '../camera/frame_converter.dart';
 import '../camera/frame_quality.dart';
+import '../camera/frame_source.dart';
 import '../controller/liveness_session.dart';
 import '../detection/flash_challenge.dart';
 import '../detection/spoof_guard.dart';
@@ -101,32 +98,26 @@ class LivenessDetector extends StatefulWidget {
 
 class _LivenessDetectorState extends State<LivenessDetector>
     with WidgetsBindingObserver {
-  CameraController? _cameraController;
-  FaceDetector? _faceDetector;
-  FrameConverter? _converter;
-  FaceMapper? _mapper;
+  late final LivenessFrameSource _source;
+  bool _sourceReady = false;
   late LivenessSession _session;
 
-  final Stopwatch _clock = Stopwatch()..start();
   late final DateTime _startedAt;
 
   bool _busy = false;
   bool _finished = false;
-  CameraImage? _lastFrame;
+  Object? _lastFrame;
 
   /// The frame most recently handed to the session (i.e. what the
   /// detectors actually judged), and the latest peak frame for the
   /// current action.
-  CameraImage? _analysedFrame;
-  ({CameraImage frame, int index, int timestampMs})? _peak;
+  Object? _analysedFrame;
+  ({Object frame, int index, int timestampMs})? _peak;
   final List<CapturedImage> _images = [];
   final List<CapturedImage> _frames = [];
   final List<Future<void>> _pendingEncodes = [];
   int _lastSeqCaptureMs = 0;
   int _seqInFlight = 0;
-  int _framesSeen = 0;
-  bool _videoActive = false;
-  Timer? _videoWatchdog;
   Timer? _ticker;
   final Map<String, Object?> _extraMetadata = {};
   String? _videoPath;
@@ -140,19 +131,13 @@ class _LivenessDetectorState extends State<LivenessDetector>
   FaceSnapshot? _lastSnapshot;
   int _qualityViolations = 0;
 
-  bool get _needsContours =>
-      widget.config.actions.contains(LivenessAction.openMouth) ||
-      widget.config.actions.contains(LivenessAction.fullTeethSmile);
-
-  bool get _needsLandmarks =>
-      widget.config.actions.contains(LivenessAction.drawCircleWithNose);
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _startedAt = DateTime.now();
     _sessionId = _generateSessionId();
+    _source = createFrameSource(widget.config, widget.cameraResolution);
     try {
       _session = LivenessSession(widget.config);
     } on ArgumentError catch (e, st) {
@@ -180,96 +165,29 @@ class _LivenessDetectorState extends State<LivenessDetector>
     }
     if (widget.config.boostScreenBrightness) {
       // Best-effort: brightness control can be unavailable (e.g. some
-      // OEMs); never block the session on it.
+      // OEMs); never block (or even delay) the session on it.
       try {
-        await ScreenBrightness.instance.setApplicationScreenBrightness(1.0);
+        unawaited(ScreenBrightness.instance
+            .setApplicationScreenBrightness(1.0)
+            .catchError((Object _) {}));
       } catch (_) {}
     }
     try {
-      final assisted = widget.config.cameraMode == LivenessCameraMode.assisted;
-      final wantedDirection =
-          assisted ? CameraLensDirection.back : CameraLensDirection.front;
-
-      final cameras = await availableCameras();
-      final camera = cameras.firstWhere(
-        (c) => c.lensDirection == wantedDirection,
-        orElse: () => cameras.first,
+      await _source.start(
+        _onFrame,
+        onError: (e, st) {
+          widget.onError?.call(e, st);
+          _session.systemError();
+        },
       );
-
-      final controller = CameraController(
-        camera,
-        widget.cameraResolution,
-        enableAudio: false,
-        imageFormatGroup: ImageFormatGroup.nv21, // ignored on iOS
-      );
-      await controller.initialize();
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-
-      // Assisted mode: the screen faces the operator, so the torch does
-      // the face-lighting job instead. Best-effort (not all devices).
-      if (assisted && widget.config.assistedTorchEnabled) {
-        try {
-          await controller.setFlashMode(FlashMode.torch);
-        } catch (_) {}
-      }
-
-      _cameraController = controller;
-      _converter = FrameConverter(camera: camera, controller: controller);
-      // The back camera isn't mirrored like the front one, so the
-      // left/right sign convention flips in assisted mode.
-      final effectiveMirror = camera.lensDirection == CameraLensDirection.front
-          ? widget.config.mirrorYaw
-          : !widget.config.mirrorYaw;
-      _mapper = FaceMapper(
-        mirrorYaw: effectiveMirror,
-        uprightCoordinates: Platform.isAndroid,
-        invertPitch: widget.config.invertPitch,
-      );
-      _faceDetector = FaceDetector(
-        options: FaceDetectorOptions(
-          enableClassification: true,
-          // ML Kit: contour detection should not be combined with tracking
-          // (contours may come back empty). We don't use tracking IDs.
-          enableTracking: false,
-          enableContours: _needsContours,
-          enableLandmarks: _needsLandmarks,
-          performanceMode: FaceDetectorMode.fast,
-        ),
-      );
-
-      if (widget.config.captureVideo) {
-        await controller.startVideoRecording(onAvailable: _onFrame);
-        _videoActive = true;
-        // Some Android devices can't stream analysis frames while
-        // recording (CameraX use-case limits). If no frames arrive
-        // shortly, drop video and continue the session on a plain stream
-        // rather than hanging. Reported via metadata['videoUnavailable'].
-        _videoWatchdog = Timer(const Duration(milliseconds: 2500), () async {
-          if (_framesSeen > 0 || _finished || !mounted) return;
-          try {
-            await controller.stopVideoRecording(); // discard
-          } catch (_) {}
-          _videoActive = false;
-          _extraMetadata['videoUnavailable'] = true;
-          try {
-            await controller.startImageStream(_onFrame);
-          } catch (e, st) {
-            widget.onError?.call(e, st);
-            _session.systemError();
-          }
-        });
-      } else {
-        await controller.startImageStream(_onFrame);
-      }
+      if (!mounted) return;
+      _sourceReady = true;
 
       _session.start();
       // Timeouts must fire even if the camera stops delivering frames.
       _ticker = Timer.periodic(
         const Duration(milliseconds: 250),
-        (_) => _session.tick(_clock.elapsedMilliseconds),
+        (_) => _session.tick(_source.elapsedMs),
       );
       setState(() {});
     } catch (e, st) {
@@ -294,15 +212,14 @@ class _LivenessDetectorState extends State<LivenessDetector>
 
   int _lastProcessedMs = 0;
 
-  Future<void> _onFrame(CameraImage image) async {
+  Future<void> _onFrame(Object image) async {
     _lastFrame = image;
-    _framesSeen++;
     if (_finished) return;
 
     // Flash challenge active: sample colors on every frame, skip ML.
     final challenge = _flashChallenge;
     if (challenge != null) {
-      final rgb = FlashChallenge.sampleCenterRgb(image);
+      final rgb = _source.sampleRgb(image);
       if (rgb != null) challenge.addSample(rgb);
       return;
     }
@@ -311,22 +228,17 @@ class _LivenessDetectorState extends State<LivenessDetector>
     if (_busy) return;
 
     // Throttle ML to ~10 fps.
-    final now = _clock.elapsedMilliseconds;
+    final now = _source.elapsedMs;
     if (now - _lastProcessedMs < 100) return;
     _lastProcessedMs = now;
     _busy = true;
 
     try {
-      final converter = _converter;
-      final detector = _faceDetector;
-      final mapper = _mapper;
-      if (converter == null || detector == null || mapper == null) return;
-
       // Cheap quality metrics + replay hash (subsampled luma, <1 ms).
       final config = widget.config;
       FrameQuality? quality;
       if (config.enableQualityChecks || config.enableReplayGuard) {
-        quality = FrameQualityAnalyzer.analyze(image);
+        quality = _source.analyzeQuality(image);
         _lastQuality = quality;
       }
 
@@ -349,21 +261,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
         }
       }
 
-      final inputImage = converter.toInputImage(image);
-      if (inputImage == null) return;
-
-      final faces = await detector.processImage(inputImage);
+      final snapshots = await _source.detectFaces(image, now);
       if (!mounted || _finished) return;
 
-      final metadata = inputImage.metadata!;
-      final snapshots = faces
-          .map((f) => mapper.map(
-                f,
-                imageSize: metadata.size,
-                rotation: metadata.rotation,
-                timestampMs: now,
-              ))
-          .toList();
       final relevant = LivenessSession.relevantFaces(
         snapshots,
         minAreaRatio: config.tuning.secondaryFaceMinAreaRatio,
@@ -469,28 +369,37 @@ class _LivenessDetectorState extends State<LivenessDetector>
   void _captureFrame(
     LivenessAction? action, {
     required CaptureKind kind,
-    CameraImage? frame,
+    Object? frame,
     int? timestampMs,
   }) {
     final source = frame ?? _analysedFrame ?? _lastFrame;
-    final converter = _converter;
-    if (source == null || converter == null) return;
-    final raw = converter.toRaw(source);
-    if (raw == null) return;
-    final ts = timestampMs ?? _clock.elapsedMilliseconds;
-    final request = EncodeRequest(
-      raw,
-      maxDimension: widget.config.maxImageDimension,
-      quality: widget.config.jpegQuality,
+    if (source == null) return;
+    final ts = timestampMs ?? _source.elapsedMs;
+    final maxDimension = widget.config.maxImageDimension;
+    final quality = widget.config.jpegQuality;
+    // Copies the pixels now; the encode itself runs in an isolate.
+    final encoding = _source.encodeJpeg(
+      source,
+      maxDimension: maxDimension,
+      quality: quality,
     );
     _pendingEncodes.add(() async {
       Uint8List? bytes;
       try {
-        bytes = await compute(encodeRawFrame, request);
+        bytes = await encoding;
       } catch (e, st) {
         widget.onError?.call(e, st);
         // Isolate failed: encode synchronously rather than lose the capture.
-        bytes = encodeRawFrame(request);
+        try {
+          bytes = await _source.encodeJpeg(
+            source,
+            maxDimension: maxDimension,
+            quality: quality,
+            background: false,
+          );
+        } catch (e, st) {
+          widget.onError?.call(e, st);
+        }
       }
       if (bytes != null) {
         _images.add(
@@ -506,7 +415,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
   }
 
   /// Steady-rate frame-sequence capture ([CaptureType.frameSequence]).
-  void _maybeCaptureSequenceFrame(CameraImage image) {
+  void _maybeCaptureSequenceFrame(Object image) {
     if (!widget.config.captureFrameSequence) return;
     // Only capture while the session is actively verifying.
     final phase = _session.current.phase;
@@ -514,7 +423,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
         phase != LivenessPhase.awaitingNeutral) {
       return;
     }
-    final now = _clock.elapsedMilliseconds;
+    final now = _source.elapsedMs;
     final intervalMs = 1000 ~/ widget.config.frameSequenceFps.clamp(1, 15);
     if (now - _lastSeqCaptureMs < intervalMs) return;
     if (_frames.length + _seqInFlight >= widget.config.frameSequenceMaxFrames) {
@@ -522,18 +431,16 @@ class _LivenessDetectorState extends State<LivenessDetector>
     }
     if (_seqInFlight >= 3) return; // don't queue up if encoding lags
 
-    final raw = _converter?.toRaw(image);
-    if (raw == null) return;
     _lastSeqCaptureMs = now;
     _seqInFlight++;
-    final request = EncodeRequest(
-      raw,
+    final encoding = _source.encodeJpeg(
+      image,
       maxDimension: widget.config.maxImageDimension,
       quality: widget.config.jpegQuality,
     );
     _pendingEncodes.add(() async {
       try {
-        final bytes = await compute(encodeRawFrame, request);
+        final bytes = await encoding;
         if (bytes != null) {
           _frames.add(
             CapturedImage(
@@ -561,30 +468,13 @@ class _LivenessDetectorState extends State<LivenessDetector>
     if (_finished) return;
     _finished = true;
 
-    _videoWatchdog?.cancel();
     _ticker?.cancel();
-    final controller = _cameraController;
     try {
-      if (controller != null && controller.value.isInitialized) {
-        // Torch off before teardown (assisted mode).
-        try {
-          await controller.setFlashMode(FlashMode.off);
-        } catch (_) {}
-        if (_videoActive && controller.value.isRecordingVideo) {
-          final file = await controller.stopVideoRecording();
-          // Guard against silently-broken recordings (empty files).
-          if (await File(file.path).length() > 0) {
-            _videoPath = file.path;
-          } else {
-            _extraMetadata['videoUnavailable'] = true;
-          }
-        } else if (controller.value.isStreamingImages) {
-          await controller.stopImageStream();
-        }
-      }
+      _videoPath = await _source.stop();
     } catch (e, st) {
       widget.onError?.call(e, st);
     }
+    _extraMetadata.addAll(_source.metadata);
 
     // Wait for background JPEG encodes to drain (bounded).
     await Future.wait(_pendingEncodes)
@@ -668,7 +558,6 @@ class _LivenessDetectorState extends State<LivenessDetector>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _finished = true;
-    _videoWatchdog?.cancel();
     _ticker?.cancel();
     _flashTint.dispose();
     if (widget.config.boostScreenBrightness) {
@@ -682,25 +571,21 @@ class _LivenessDetectorState extends State<LivenessDetector>
       // Fire-and-forget; the file is in temp storage anyway.
       File(videoPath).delete().catchError((_) => File(videoPath));
     }
-    _cameraController?.dispose();
-    _faceDetector?.close();
+    _source.dispose();
     _session.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _cameraController;
+    final preview = _sourceReady ? _source.buildPreview(context) : null;
     return ValueListenableBuilder<LivenessSessionState>(
       valueListenable: _session.state,
       builder: (context, state, _) {
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (controller != null && controller.value.isInitialized)
-              _FullScreenPreview(controller: controller)
-            else
-              const ColoredBox(color: Colors.black),
+            preview ?? const ColoredBox(color: Colors.black),
 
             // Overlay (scrim + oval + progress).
             if (widget.overlayBuilder != null)
@@ -832,25 +717,6 @@ class _DebugPanel extends StatelessWidget {
           fontFamily: 'monospace',
         ),
       ),
-    );
-  }
-}
-
-/// Cover-fits the camera preview to the available space.
-class _FullScreenPreview extends StatelessWidget {
-  const _FullScreenPreview({required this.controller});
-
-  final CameraController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final previewRatio = controller.value.aspectRatio;
-    // Camera aspect ratio is width/height in landscape sensor terms.
-    final scale = size.aspectRatio * previewRatio;
-    return Transform.scale(
-      scale: scale < 1 ? 1 / scale : scale,
-      child: Center(child: CameraPreview(controller)),
     );
   }
 }
