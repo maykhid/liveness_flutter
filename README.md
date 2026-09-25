@@ -184,6 +184,11 @@ await HttpLivenessUploader(
   onProgress: (sent, total) => progress.value = sent / total,
 ).upload(result);
 
+// It sends: a `metadata` field with result.toJson() (sessionId,
+// confidenceScore, actions, timings…), one file per photo named like
+// `blink_peak_812ms.jpg`, the frame sequence, the video, and an
+// `X-Liveness-Session` header.
+
 // Or wrap your own function (dio, Firebase, S3, anything):
 final uploader = LivenessUploader.custom((result) async {
   // your code here

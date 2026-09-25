@@ -51,6 +51,7 @@ class HttpLivenessUploader extends LivenessUploader {
     this.metadataFieldName = 'metadata',
     this.onResponse,
     this.onProgress,
+    this.client,
   });
 
   final Uri endpoint;
@@ -74,34 +75,35 @@ class HttpLivenessUploader extends LivenessUploader {
   /// it may reach 100% slightly before the server finishes reading.
   final void Function(int sentBytes, int totalBytes)? onProgress;
 
+  /// HTTP client to send with (e.g. a `MockClient` in tests, or your app's
+  /// configured client). When null, a fresh client is created and closed
+  /// per upload.
+  final http.Client? client;
+
   /// Sends:
-  /// - `metadata` field: JSON with success, actions, timings
-  /// - `images[i]` files: JPEG per captured frame (filename encodes action)
+  /// - `metadata` field: [LivenessResult.toJson] (sessionId,
+  ///   confidenceScore, success, actions, timings, and the diagnostics under
+  ///   `metadata`)
+  /// - `images[i]` files: JPEG per captured frame, named
+  ///   `<action>_<kind>_<timestampMs>ms.jpg` (or `reference_<t>ms.jpg`)
   /// - `frames[i]` files: frame-sequence JPEGs (filename encodes timestamp)
   /// - `video` file: the session recording, if any
+  /// - `X-Liveness-Session` header: the session ID
   @override
   Future<void> upload(LivenessResult result) async {
     final request =
         _ProgressMultipartRequest('POST', endpoint, onProgress: onProgress)
-          ..headers.addAll(headers);
+          ..headers.addAll(headers)
+          ..headers['X-Liveness-Session'] = result.sessionId;
 
-    request.fields[metadataFieldName] = jsonEncode({
-      'success': result.success,
-      'completedActions':
-          result.completedActions.map((a) => a.name).toList(),
-      'failureReason': result.failureReason?.name,
-      'startedAt': result.startedAt.toIso8601String(),
-      'finishedAt': result.finishedAt.toIso8601String(),
-      'durationMs': result.duration.inMilliseconds,
-      ...result.metadata,
-    });
+    request.fields[metadataFieldName] = jsonEncode(result.toJson());
 
     for (var i = 0; i < result.images.length; i++) {
       final image = result.images[i];
       request.files.add(http.MultipartFile.fromBytes(
         '$imageFieldName[$i]',
         image.bytes,
-        filename: '${image.action?.name ?? 'reference'}_$i.jpg',
+        filename: _imageFileName(image),
       ));
     }
 
@@ -124,9 +126,23 @@ class HttpLivenessUploader extends LivenessUploader {
       );
     }
 
-    final response = await request.send();
-    await onResponse?.call(response);
+    final client = this.client ?? http.Client();
+    try {
+      final response = await client.send(request);
+      await onResponse?.call(response);
+    } finally {
+      if (this.client == null) client.close();
+    }
   }
+}
+
+/// File name used for a captured image: `<action>_<kind>_<t>ms.jpg`, or
+/// `reference_<t>ms.jpg` for the neutral reference shot.
+String _imageFileName(CapturedImage image) {
+  final action = image.action;
+  return action == null
+      ? 'reference_${image.timestampMs}ms.jpg'
+      : '${action.name}_${image.kind.name}_${image.timestampMs}ms.jpg';
 }
 
 /// MultipartRequest that reports bytes as they're written to the wire.

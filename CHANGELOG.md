@@ -22,6 +22,10 @@
 - `onResult` can now run from `dispose()`, when the widget's context is
   unmounted. Code that navigates in `onResult` must check `context.mounted`
   first (the README example now does).
+- `HttpLivenessUploader`'s `metadata` JSON is now `result.toJson()`: the
+  diagnostics (`blink_ms`, `confidence_*`, `flashChallenge`, …) moved from
+  the top level into a nested `metadata` object, and image file names
+  changed from `<action>_<index>.jpg` to `<action>_<kind>_<t>ms.jpg`.
 
 ### Added
 
@@ -48,6 +52,8 @@
   `FrameQuality.issueFor(config)`.
 - `metadata['cancelledBy']` on cancelled results: `'user'`, `'lifecycle'` or
   `'dispose'`.
+- `HttpLivenessUploader.client`: inject an `http.Client` (your own, or a
+  `MockClient` in tests).
 
 ### Fixed
 
@@ -89,6 +95,11 @@
   once" promise. It is now delivered synchronously from `dispose()` as a
   `cancelled` result, or with the real outcome if the session had already
   ended. A throwing `onResult` there goes to `onError`.
+- `HttpLivenessUploader` left out `sessionId` and `confidenceScore`, the two
+  audit fields the README promotes. The `metadata` field is now
+  `result.toJson()`, and the request carries an `X-Liveness-Session` header.
+  Image file names now include the capture kind and timestamp
+  (`blink_peak_812ms.jpg`, `reference_120ms.jpg`) instead of a list index.
 
 # 0.4.4
 
