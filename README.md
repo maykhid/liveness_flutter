@@ -188,6 +188,10 @@ await HttpLivenessUploader(
 // confidenceScore, actions, timings…), one file per photo named like
 // `blink_peak_812ms.jpg`, the frame sequence, the video, and an
 // `X-Liveness-Session` header.
+//
+// A non-2xx answer throws `LivenessUploadException(statusCode, body)`, and
+// each attempt is limited by `timeout` (default 60 s). Set `maxRetries` to
+// retry network errors, timeouts and 5xx with exponential backoff.
 
 // Or wrap your own function (dio, Firebase, S3, anything):
 final uploader = LivenessUploader.custom((result) async {

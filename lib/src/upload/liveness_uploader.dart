@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -40,6 +41,21 @@ class _FunctionUploader extends LivenessUploader {
   Future<void> upload(LivenessResult result) => _fn(result);
 }
 
+/// Thrown by [HttpLivenessUploader.upload] when the server answers with a
+/// non-2xx status (after any retries).
+class LivenessUploadException implements Exception {
+  const LivenessUploadException(this.statusCode, this.body);
+
+  final int statusCode;
+
+  /// Response body, decoded as UTF-8 (malformed bytes replaced).
+  final String body;
+
+  @override
+  String toString() => 'LivenessUploadException: HTTP $statusCode'
+      '${body.isEmpty ? '' : ' — ${body.length > 200 ? '${body.substring(0, 200)}…' : body}'}';
+}
+
 /// Built-in uploader for the common case: multipart-POST to an endpoint.
 class HttpLivenessUploader extends LivenessUploader {
   const HttpLivenessUploader({
@@ -52,6 +68,9 @@ class HttpLivenessUploader extends LivenessUploader {
     this.onResponse,
     this.onProgress,
     this.client,
+    this.timeout = const Duration(seconds: 60),
+    this.maxRetries = 0,
+    this.retryDelay = const Duration(seconds: 1),
   });
 
   final Uri endpoint;
@@ -64,7 +83,9 @@ class HttpLivenessUploader extends LivenessUploader {
   final String videoFieldName;
   final String metadataFieldName;
 
-  /// Inspect the server response (status code, body) if you care about it.
+  /// Inspect the final server response (status code, body). Called for
+  /// error statuses too, before [upload] throws; not called for 5xx
+  /// responses that are retried.
   final Future<void> Function(http.StreamedResponse response)? onResponse;
 
   /// Called as the request body is sent — drive a progress bar with
@@ -80,6 +101,17 @@ class HttpLivenessUploader extends LivenessUploader {
   /// per upload.
   final http.Client? client;
 
+  /// Limit for each attempt: sending the request and reading the response.
+  /// A timed-out attempt throws [TimeoutException] (or is retried).
+  final Duration timeout;
+
+  /// Extra attempts after a network error, a timeout, or a 5xx response.
+  /// 4xx responses are never retried.
+  final int maxRetries;
+
+  /// Wait before the first retry; doubles on each later one.
+  final Duration retryDelay;
+
   /// Sends:
   /// - `metadata` field: [LivenessResult.toJson] (sessionId,
   ///   confidenceScore, success, actions, timings, and the diagnostics under
@@ -89,8 +121,65 @@ class HttpLivenessUploader extends LivenessUploader {
   /// - `frames[i]` files: frame-sequence JPEGs (filename encodes timestamp)
   /// - `video` file: the session recording, if any
   /// - `X-Liveness-Session` header: the session ID
+  ///
+  /// Throws [LivenessUploadException] for a non-2xx response and
+  /// [TimeoutException] when an attempt exceeds [timeout], once
+  /// [maxRetries] are used up. Network errors are rethrown as-is.
   @override
   Future<void> upload(LivenessResult result) async {
+    final client = this.client ?? http.Client();
+    try {
+      for (var attempt = 0;; attempt++) {
+        final canRetry = attempt < maxRetries;
+        final http.StreamedResponse streamed;
+        final Uint8List bytes;
+        try {
+          // A multipart request can only be sent once: rebuild per attempt.
+          final request = await _buildRequest(result);
+          streamed = await client.send(request).timeout(timeout);
+          bytes = await streamed.stream.toBytes().timeout(timeout);
+        } catch (e) {
+          if (canRetry && _isRetryable(e)) {
+            await Future<void>.delayed(retryDelay * (1 << attempt));
+            continue;
+          }
+          rethrow;
+        }
+
+        final status = streamed.statusCode;
+        if (status >= 500 && canRetry) {
+          await Future<void>.delayed(retryDelay * (1 << attempt));
+          continue;
+        }
+        await onResponse?.call(http.StreamedResponse(
+          http.ByteStream.fromBytes(bytes),
+          status,
+          contentLength: bytes.length,
+          request: streamed.request,
+          headers: streamed.headers,
+          isRedirect: streamed.isRedirect,
+          persistentConnection: streamed.persistentConnection,
+          reasonPhrase: streamed.reasonPhrase,
+        ));
+        if (status < 200 || status >= 300) {
+          throw LivenessUploadException(
+            status,
+            utf8.decode(bytes, allowMalformed: true),
+          );
+        }
+        return;
+      }
+    } finally {
+      if (this.client == null) client.close();
+    }
+  }
+
+  static bool _isRetryable(Object error) =>
+      error is TimeoutException ||
+      error is http.ClientException ||
+      error is SocketException;
+
+  Future<http.BaseRequest> _buildRequest(LivenessResult result) async {
     final request =
         _ProgressMultipartRequest('POST', endpoint, onProgress: onProgress)
           ..headers.addAll(headers)
@@ -126,13 +215,7 @@ class HttpLivenessUploader extends LivenessUploader {
       );
     }
 
-    final client = this.client ?? http.Client();
-    try {
-      final response = await client.send(request);
-      await onResponse?.call(response);
-    } finally {
-      if (this.client == null) client.close();
-    }
+    return request;
   }
 }
 

@@ -26,6 +26,8 @@
   diagnostics (`blink_ms`, `confidence_*`, `flashChallenge`, …) moved from
   the top level into a nested `metadata` object, and image file names
   changed from `<action>_<index>.jpg` to `<action>_<kind>_<t>ms.jpg`.
+- `HttpLivenessUploader.upload()` now throws on non-2xx responses and on
+  timeouts (60 s per attempt by default). Wrap it in `try`/`catch`.
 
 ### Added
 
@@ -54,6 +56,10 @@
   `'dispose'`.
 - `HttpLivenessUploader.client`: inject an `http.Client` (your own, or a
   `MockClient` in tests).
+- `HttpLivenessUploader.timeout` (default 60 s per attempt), `maxRetries`
+  (default 0) and `retryDelay` (default 1 s, doubling): network errors,
+  timeouts and 5xx responses are retried; 4xx never are.
+  `LivenessUploadException`.
 
 ### Fixed
 
@@ -100,6 +106,9 @@
   `result.toJson()`, and the request carries an `X-Liveness-Session` header.
   Image file names now include the capture kind and timestamp
   (`blink_peak_812ms.jpg`, `reference_120ms.jpg`) instead of a list index.
+- `HttpLivenessUploader.upload()` completed normally on any HTTP status,
+  including 500. It now throws `LivenessUploadException(statusCode, body)` for
+  non-2xx responses (after `onResponse` has seen them).
 
 # 0.4.4
 
