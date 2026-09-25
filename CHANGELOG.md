@@ -148,6 +148,10 @@
   `cameraPermission` errors) with its own failure text,
   `LivenessSession.permissionDenied()`, and
   `LivenessDetector.permissionDeniedBuilder` (with a `retry` callback).
+- GitHub Actions CI: `flutter analyze` and `flutter test` for the package,
+  plus `flutter analyze` for the example, on pushes to `main` and on pull
+  requests. Widget tests now drive `LivenessDetector` through a fake camera
+  (225 tests in total).
 
 ### Fixed
 
@@ -235,6 +239,9 @@
   reading between open frames counts as the closed part of a blink
   (`DetectorTuning.blinkPartialCloseThreshold`, default 0.4). In simulation a
   60 ms closure is now caught in ≥ 95 % of runs.
+- The example README said the platform folders weren't checked in (they
+  are; only the pub.dev package omits them), listed `minSdkVersion 21` (the
+  package needs 24), and described outdated upload fields.
 
 # 0.4.4
 
