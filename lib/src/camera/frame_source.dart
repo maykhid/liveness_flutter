@@ -116,11 +116,11 @@ class CameraFrameSource implements LivenessFrameSource {
   bool get _assisted => config.cameraMode == LivenessCameraMode.assisted;
 
   bool get _needsContours =>
-      config.actions.contains(LivenessAction.openMouth) ||
-      config.actions.contains(LivenessAction.fullTeethSmile);
+      config.effectiveActions.contains(LivenessAction.openMouth) ||
+      config.effectiveActions.contains(LivenessAction.fullTeethSmile);
 
   bool get _needsLandmarks =>
-      config.actions.contains(LivenessAction.drawCircleWithNose);
+      config.effectiveActions.contains(LivenessAction.drawCircleWithNose);
 
   @override
   int get elapsedMs => _clock.elapsedMilliseconds;

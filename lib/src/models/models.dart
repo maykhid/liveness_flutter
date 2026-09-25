@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
+
+import 'package:crypto/crypto.dart';
 
 /// Actions the user can be asked to perform, executed in list order.
 enum LivenessAction {
@@ -124,6 +127,10 @@ enum LivenessFailureReason {
 
   /// Camera or ML pipeline error.
   systemError,
+
+  /// [LivenessConfig.challenge] had expired (checked against the device
+  /// clock at start and at completion; your server must check too).
+  challengeExpired,
 }
 
 /// High-level phase of a running session.
@@ -282,6 +289,46 @@ enum CaptureKind {
   sequence,
 }
 
+/// A challenge issued by your server, binding a session to it.
+///
+/// Fetch one from your backend before opening the liveness screen and pass
+/// it as [LivenessConfig.challenge]. The session then runs exactly
+/// [actions] in that order (no local shuffle), echoes [nonce] in the
+/// result, and refuses to run once [expiresAt] has passed. Your server
+/// checks the nonce, the order and the expiry again — see
+/// `doc/server_verification.md`.
+class LivenessChallenge {
+  const LivenessChallenge({
+    required this.nonce,
+    required this.actions,
+    required this.expiresAt,
+  });
+
+  /// Single-use value from your server. Echoed as [LivenessResult.nonce].
+  final String nonce;
+
+  /// The actions to run, in this order.
+  final List<LivenessAction> actions;
+
+  /// After this instant the challenge is refused
+  /// ([LivenessFailureReason.challengeExpired]).
+  final DateTime expiresAt;
+
+  bool isExpiredAt(DateTime now) => !now.isBefore(expiresAt);
+}
+
+/// Produces a platform attestation (Play Integrity, App Attest, …) over a
+/// session. Implement it in your app; the package ships no implementation.
+///
+/// [attest] receives the SHA-256 of [LivenessResult.attestationPayload];
+/// whatever token it returns is stored as [LivenessResult.attestation] for
+/// your server to verify with the platform.
+abstract class LivenessAttestor {
+  const LivenessAttestor();
+
+  Future<String> attest(Uint8List payloadHash);
+}
+
 /// One captured still image tied to a moment in the session.
 class CapturedImage {
   const CapturedImage({
@@ -300,6 +347,17 @@ class CapturedImage {
   final int timestampMs;
 
   final CaptureKind kind;
+
+  /// Lowercase hex SHA-256 of [bytes], so a server can check each uploaded
+  /// file against the result's metadata.
+  String get sha256Hex => sha256.convert(bytes).toString();
+
+  Map<String, Object?> toJson() => {
+        'action': action?.name,
+        'kind': kind.name,
+        'timestampMs': timestampMs,
+        'sha256': sha256Hex,
+      };
 }
 
 /// Final output of a liveness session, handed to `onResult`.
@@ -316,6 +374,8 @@ class LivenessResult {
     this.metadata = const {},
     this.confidenceScore = 1.0,
     this.sessionId = '',
+    this.nonce,
+    this.attestation,
   });
 
   final bool success;
@@ -349,18 +409,46 @@ class LivenessResult {
   /// (timestamp hex + cryptographically random suffix).
   final String sessionId;
 
+  /// [LivenessChallenge.nonce] when the session ran a server challenge.
+  final String? nonce;
+
+  /// Token from [LivenessConfig.attestor] over [attestationPayload], if an
+  /// attestor was configured and succeeded.
+  final String? attestation;
+
   Duration get duration => finishedAt.difference(startedAt);
+
+  /// The exact string an attestor signs (via its SHA-256), easy to rebuild
+  /// server-side:
+  /// `sessionId|nonce|success|action,action,…|sha256,sha256,…`, where the
+  /// hashes are those of [images] then [frameSequence], in order, and a
+  /// missing nonce is empty.
+  String get attestationPayload => [
+        sessionId,
+        nonce ?? '',
+        success ? 'true' : 'false',
+        completedActions.map((a) => a.name).join(','),
+        [...images, ...frameSequence].map((i) => i.sha256Hex).join(','),
+      ].join('|');
+
+  /// SHA-256 of [attestationPayload] (what [LivenessAttestor.attest] gets).
+  Uint8List get attestationPayloadHash => Uint8List.fromList(
+      sha256.convert(utf8.encode(attestationPayload)).bytes);
 
   /// JSON-safe summary (no image/video bytes — just facts and counts).
   /// Handy for logging and for sending alongside uploaded media.
   Map<String, Object?> toJson() => {
         'sessionId': sessionId,
+        'nonce': nonce,
         'success': success,
         'confidenceScore': double.parse(confidenceScore.toStringAsFixed(3)),
         'completedActions': completedActions.map((a) => a.name).toList(),
         'failureReason': failureReason?.name,
         'imageCount': images.length,
         'frameCount': frameSequence.length,
+        'images': images.map((i) => i.toJson()).toList(),
+        'frames': frameSequence.map((i) => i.toJson()).toList(),
+        'attestation': attestation,
         'videoPath': videoPath,
         'startedAt': startedAt.toIso8601String(),
         'finishedAt': finishedAt.toIso8601String(),
@@ -490,6 +578,8 @@ class LivenessConfig {
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
     this.hapticFeedback = false,
+    this.challenge,
+    this.attestor,
   })  : assert(jpegQuality >= 1 && jpegQuality <= 100,
             'jpegQuality must be 1–100'),
         assert(maxImageDimension >= 64, 'maxImageDimension must be ≥ 64'),
@@ -502,7 +592,17 @@ class LivenessConfig {
   /// `LivenessDetector` widget turns a failure into an immediate
   /// `systemError` result. Call it yourself to check a config up front.
   void validate() {
-    if (actions.isEmpty) {
+    final challenge = this.challenge;
+    if (challenge != null) {
+      if (challenge.actions.isEmpty) {
+        throw ArgumentError.value(
+            challenge.actions, 'challenge.actions', 'must not be empty');
+      }
+      if (challenge.nonce.isEmpty) {
+        throw ArgumentError.value(
+            challenge.nonce, 'challenge.nonce', 'must not be empty');
+      }
+    } else if (actions.isEmpty) {
       throw ArgumentError.value(actions, 'actions', 'must not be empty');
     }
     if (jpegQuality < 1 || jpegQuality > 100) {
@@ -536,8 +636,24 @@ class LivenessConfig {
     }
   }
 
-  /// Actions executed in order (unless [shuffleActions] is true).
+  /// Actions executed in order (unless [shuffleActions] is true). Ignored
+  /// when [challenge] is set (pass `const []`).
   final List<LivenessAction> actions;
+
+  /// A server-issued challenge. When set, its actions run in its order (no
+  /// shuffle), its nonce is echoed in the result, and an expired challenge
+  /// fails with [LivenessFailureReason.challengeExpired].
+  final LivenessChallenge? challenge;
+
+  /// Optional platform attestation over the result (see
+  /// [LivenessAttestor]). Called once when the session ends, before
+  /// `onResult`; failures are reported in `metadata['attestationError']`
+  /// and never block the result.
+  final LivenessAttestor? attestor;
+
+  /// The actions this config asks for: [challenge]'s if set, else
+  /// [actions].
+  List<LivenessAction> get effectiveActions => challenge?.actions ?? actions;
 
   /// Randomize the order of [actions] once per session.
   ///

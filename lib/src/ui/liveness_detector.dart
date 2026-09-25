@@ -712,7 +712,8 @@ class _LivenessRunState extends State<_LivenessRun>
     await Future.wait(_pendingEncodes)
         .timeout(const Duration(seconds: 5), onTimeout: () => const []);
 
-    final result = _builtResult = _buildResult(success: success, reason: reason);
+    var result = _buildResult(success: success, reason: reason);
+    result = _builtResult = await _attest(result, success, reason);
 
     // Let the final UI state (success/failure) render briefly before
     // handing off.
@@ -722,11 +723,43 @@ class _LivenessRunState extends State<_LivenessRun>
     await _d.onResult(result);
   }
 
+  /// Runs [LivenessConfig.attestor] over [result], if any. Never throws and
+  /// never blocks for more than 15 s.
+  Future<LivenessResult> _attest(
+    LivenessResult result,
+    bool success,
+    LivenessFailureReason? reason,
+  ) async {
+    final attestor = _d.config.attestor;
+    if (attestor == null) return result;
+    try {
+      final token = await attestor
+          .attest(result.attestationPayloadHash)
+          .timeout(const Duration(seconds: 15));
+      return _buildResult(
+        success: success,
+        reason: reason,
+        attestation: token,
+        finishedAt: result.finishedAt,
+      );
+    } catch (e, st) {
+      _d.onError?.call(e, st);
+      _extraMetadata['attestationError'] = e.toString();
+      return _buildResult(
+        success: success,
+        reason: reason,
+        finishedAt: result.finishedAt,
+      );
+    }
+  }
+
   /// Snapshot of everything collected so far. Synchronous, so `dispose`
   /// can use it.
   LivenessResult _buildResult({
     required bool success,
     LivenessFailureReason? reason,
+    String? attestation,
+    DateTime? finishedAt,
   }) {
     final images = List.of(_images)
       ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
@@ -734,10 +767,10 @@ class _LivenessRunState extends State<_LivenessRun>
       ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
 
     // Composite confidence: clean sessions on a real camera score ≥ 0.9.
-    final completedRatio = _d.config.actions.isEmpty
+    final planned = _session.actionOrder.length;
+    final completedRatio = planned == 0
         ? 0.0
-        : _session.current.completedActions.length /
-            _d.config.actions.length;
+        : _session.current.completedActions.length / planned;
     var confidence = success ? 1.0 : 0.5 * completedRatio;
     confidence -= _spoofGuard.confidencePenalty;
     confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
@@ -752,9 +785,11 @@ class _LivenessRunState extends State<_LivenessRun>
       frameSequence: List.unmodifiable(frames),
       videoPath: _videoPath,
       startedAt: _startedAt,
-      finishedAt: DateTime.now(),
+      finishedAt: finishedAt ?? DateTime.now(),
       confidenceScore: confidence,
       sessionId: _sessionId,
+      nonce: _d.config.challenge?.nonce,
+      attestation: attestation,
       metadata: {
         ..._session.metadata,
         ..._extraMetadata,
@@ -814,6 +849,10 @@ class _LivenessRunState extends State<_LivenessRun>
     // A session that already ended keeps its real outcome (e.g. a success
     // whose result hold was cut short); otherwise it's a cancel.
     final state = _session.current;
+    if (_builtResult == null && _d.config.attestor != null) {
+      // Attestation is async; a result delivered from dispose can't wait.
+      _extraMetadata['attestationError'] = 'skipped: disposed';
+    }
     final LivenessResult result;
     if (_builtResult != null) {
       result = _builtResult!;

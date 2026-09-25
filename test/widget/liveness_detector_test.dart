@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
@@ -312,4 +314,85 @@ void main() {
       expect(results, hasLength(1));
     });
   });
+
+  group('S1 challenge and attestation in the widget', () {
+    Future<List<LivenessResult>> runSmile(
+      WidgetTester tester,
+      LivenessConfig config, {
+      List<Object>? errors,
+    }) async {
+      usePhoneScreen(tester);
+      final results = <LivenessResult>[];
+      await tester.pumpWidget(MaterialApp(
+        home: LivenessDetector(
+          config: config,
+          onResult: results.add,
+          onError: (e, _) => errors?.add(e),
+        ),
+      ));
+      await tester.pump();
+      await harness.step(tester, [face()]);
+      await harness.hold(tester, [face(smile: 0.9)], 700);
+      await tester.pump(const Duration(seconds: 1));
+      return results;
+    }
+
+    testWidgets('the nonce is echoed and the attestor signs the payload',
+        (tester) async {
+      final attestor = _RecordingAttestor();
+      final results = await runSmile(
+        tester,
+        LivenessConfig(
+          actions: const [],
+          capture: const {CaptureType.images},
+          challenge: LivenessChallenge(
+            nonce: 'server-nonce',
+            actions: const [LivenessAction.smile],
+            expiresAt: DateTime.now().add(const Duration(hours: 1)),
+          ),
+          attestor: attestor,
+        ),
+      );
+      final result = results.single;
+      expect(result.success, isTrue);
+      expect(result.nonce, 'server-nonce');
+      expect(result.attestation, 'attested');
+      expect(attestor.hashes.single, result.attestationPayloadHash);
+      expect(result.attestationPayload, contains('|server-nonce|true|smile|'));
+    });
+
+    testWidgets('a failing attestor never blocks the result', (tester) async {
+      final errors = <Object>[];
+      final results = await runSmile(
+        tester,
+        const LivenessConfig(
+          actions: [LivenessAction.smile],
+          attestor: _FailingAttestor(),
+        ),
+        errors: errors,
+      );
+      expect(results.single.success, isTrue);
+      expect(results.single.attestation, isNull);
+      expect(results.single.metadata['attestationError'], contains('nope'));
+      expect(errors, isNotEmpty);
+    });
+  });
+}
+
+class _RecordingAttestor extends LivenessAttestor {
+  final hashes = <Uint8List>[];
+
+  @override
+  Future<String> attest(Uint8List payloadHash) async {
+    hashes.add(payloadHash);
+    return 'attested';
+  }
+}
+
+class _FailingAttestor extends LivenessAttestor {
+  const _FailingAttestor();
+
+  @override
+  Future<String> attest(Uint8List payloadHash) async =>
+      throw StateError('nope');
 }

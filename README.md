@@ -160,6 +160,9 @@ tools:
   Duplicate frames, a frozen head, or many bad-quality frames pull it
   down. Raw counters are in `metadata` under `confidence_*` keys.
 - `sessionId` — unique audit ID (e.g. `LV-018F3A2B9C4E-D7E31F08`)
+- `nonce` / `attestation` — the server challenge's nonce and the
+  attestor's token, when you use them (see "Binding sessions to your
+  server")
 - `completedActions` — which actions, in the order performed
 - `images` — the photos, each labeled with the action it belongs to
 - `frameSequence` — the steady-stream photos, each with a timestamp
@@ -308,6 +311,27 @@ Every session still gets exactly one `onResult`: restarting a session
 that's still running delivers it as `cancelled` with
 `cancelledBy: 'restart'`.
 
+## 🔐 Binding sessions to your server (recommended for KYC)
+
+On its own, the phone's verdict is unsigned: your server can't tell which
+actions it expected or whether the result was edited. Three hooks fix
+that:
+
+- **`LivenessConfig.challenge`**: your server issues a `LivenessChallenge`
+  (single-use nonce, the actions in its chosen order, an expiry). The
+  session runs exactly that order and echoes the nonce in
+  `result.nonce`. An expired challenge fails with `challengeExpired`.
+- **Image hashes**: `result.toJson()` (and so the uploader's `metadata`)
+  lists the SHA-256 of every photo and frame, so the server can prove the
+  files weren't swapped.
+- **`LivenessConfig.attestor`**: plug in Play Integrity or App Attest
+  through the `LivenessAttestor` interface. It signs a hash of
+  `sessionId|nonce|success|actions|image hashes`; the token lands in
+  `result.attestation`. The package doesn't implement the platform APIs.
+
+**[Server verification guide →](doc/server_verification.md)** covers what
+your backend should check, with a payload-rebuild snippet.
+
 ## 🧑‍🤝‍🧑 Assisted mode: verifying someone else (opt-in)
 
 By default the person being verified holds the phone and uses the front
@@ -426,7 +450,9 @@ the phone, and a determined attacker controls their own phone. Treat a
 passing result as a good first gate, and have your server double-check the
 photos/video you upload (compare against an ID photo, look for signs of
 screens or prints). That's exactly why this package captures media
-*during* the actions.
+*during* the actions. Server challenges, image hashes and attestation make
+tampering detectable, but the face itself still has to be judged
+server-side — see the [server verification guide](doc/server_verification.md).
 
 **Memory adds up if you turn everything up.** Photos are kept in memory
 until the result is delivered. Defaults use roughly 15–35 MB per session.

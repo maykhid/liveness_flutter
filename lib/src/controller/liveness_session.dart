@@ -57,10 +57,17 @@ class LivenessSession {
   ///
   /// The shuffle uses [Random.secure] unless [random] is given (tests), so
   /// the order can't be predicted from a seeded PRNG.
-  LivenessSession(this.config, {Random? random})
-      : _actions = config.shuffleActions
-            ? (List.of(config.actions)..shuffle(random ?? Random.secure()))
-            : List.of(config.actions) {
+  ///
+  /// With a [LivenessConfig.challenge], its actions run in its order and
+  /// [now] (default `DateTime.now`) is used to refuse an expired one.
+  LivenessSession(this.config, {Random? random, DateTime Function()? now})
+      : _now = now ?? DateTime.now,
+        _actions = config.challenge != null
+            ? List.of(config.challenge!.actions)
+            : config.shuffleActions
+                ? (List.of(config.actions)
+                  ..shuffle(random ?? Random.secure()))
+                : List.of(config.actions) {
     config.validate();
     _state = ValueNotifier(
       LivenessSessionState(
@@ -73,6 +80,10 @@ class LivenessSession {
   }
 
   final LivenessConfig config;
+  final DateTime Function() _now;
+
+  bool get _challengeExpired =>
+      config.challenge?.isExpiredAt(_now()) ?? false;
 
   /// The order actions will actually run in (shuffled once per session when
   /// `config.shuffleActions` is true).
@@ -111,6 +122,10 @@ class LivenessSession {
 
   /// Call once the camera + detector pipeline is delivering frames.
   void start() {
+    if (_challengeExpired) {
+      _fail(LivenessFailureReason.challengeExpired);
+      return;
+    }
     _emitState(current.copyWith(phase: LivenessPhase.searchingFace));
   }
 
@@ -356,6 +371,10 @@ class LivenessSession {
       _detector = null;
 
       if (_actionIndex >= _actions.length) {
+        if (_challengeExpired) {
+          _fail(LivenessFailureReason.challengeExpired);
+          return;
+        }
         _emitState(current.copyWith(
           phase: LivenessPhase.completed,
           completedActions: List.of(_completed),

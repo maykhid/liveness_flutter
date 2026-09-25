@@ -38,6 +38,8 @@
   returning your entries merged over the defaults (the constructor
   parameters are unchanged). The failed screen shows the reason-specific
   text from `failureMessages` instead of `failed`.
+- New `LivenessFailureReason.challengeExpired`. `LivenessConfig.actions` may
+  be empty when a `challenge` is set.
 
 ### Added
 
@@ -100,6 +102,13 @@
 - `ResolutionPreset` (for `LivenessDetector.cameraResolution`) is
   re-exported, so you no longer need to depend on `package:camera` to set
   it.
+- Server-bound sessions: `LivenessConfig.challenge` (`LivenessChallenge`
+  with nonce, ordered actions and expiry; runs that order with no shuffle and
+  refuses an expired one), `LivenessResult.nonce`, per-image and per-frame
+  SHA-256 in `toJson()` (`images` / `frames` lists, `CapturedImage.sha256Hex`),
+  and an optional `LivenessAttestor` (`LivenessConfig.attestor`) that signs
+  `LivenessResult.attestationPayload` into `LivenessResult.attestation`.
+  New guide: `doc/server_verification.md`. New dependency: `crypto`.
 
 ### Fixed
 
