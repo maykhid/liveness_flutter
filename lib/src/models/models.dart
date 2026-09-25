@@ -420,6 +420,7 @@ class LivenessConfig {
     this.captureAtPeak = true,
     this.tuning = const DetectorTuning(),
     this.mirrorYaw = true,
+    this.invertPitch = false,
     this.maxImageDimension = 720,
     this.jpegQuality = 85,
     this.frameSequenceFps = 8,
@@ -551,6 +552,12 @@ class LivenessConfig {
   /// [LivenessAction.lookLeft] means the *user's* left. Set false if your
   /// device reports inverted turns.
   final bool mirrorYaw;
+
+  /// Flip the sign of pitch (up/down head tilt). Positive pitch should mean
+  /// "face tilted up" on every device; set true if [LivenessAction.lookUp],
+  /// [LivenessAction.lookDown] or [LivenessAction.nod] behave inverted on
+  /// yours (check with `showDebugOverlay`).
+  final bool invertPitch;
 
   /// Captured JPEGs (images and frame-sequence frames) are downscaled so
   /// their longest side is at most this. Camera/video resolution is set

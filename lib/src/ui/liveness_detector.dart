@@ -223,6 +223,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
       _mapper = FaceMapper(
         mirrorYaw: effectiveMirror,
         uprightCoordinates: Platform.isAndroid,
+        invertPitch: widget.config.invertPitch,
       );
       _faceDetector = FaceDetector(
         options: FaceDetectorOptions(

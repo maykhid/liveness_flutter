@@ -35,6 +35,9 @@
   `LivenessConfig.captureAtPeak` (default `true`).
 - `LivenessSessionState.copyWith` gains `clearCurrentAction`,
   `clearFailureReason` and `clearRemaining`.
+- `LivenessConfig.invertPitch` (default `false`): flips up/down head tilt
+  for devices where `lookUp`, `lookDown` or `nod` behave inverted, like
+  `mirrorYaw` does for left/right.
 
 ### Fixed
 

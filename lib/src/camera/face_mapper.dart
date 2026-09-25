@@ -11,10 +11,14 @@ class FaceMapper {
   const FaceMapper({
     required this.mirrorYaw,
     required this.uprightCoordinates,
+    this.invertPitch = false,
   });
 
   /// See `LivenessConfig.mirrorYaw`.
   final bool mirrorYaw;
+
+  /// See `LivenessConfig.invertPitch`.
+  final bool invertPitch;
 
   /// Android ML Kit reports coordinates in the rotated (upright) frame, so
   /// dimensions must be swapped for 90/270 rotations. iOS reports them in
@@ -62,12 +66,21 @@ class FaceMapper {
     final rawRoll = face.headEulerAngleZ;
     final roll = rawRoll == null ? null : rawRoll * -platformSign * userSign;
 
+    // Pitch is passed through: ML Kit documents positive X as "facing
+    // up" on both platforms, and the Android/iOS difference that flips yaw
+    // and roll above is a horizontal mirror, which leaves pitch unchanged.
+    // TODO(B8): confirm on an iPhone (nod, lookUp, lookDown with
+    // showDebugOverlay) and drop this note, or flip the iOS sign here.
+    final rawPitch = face.headEulerAngleX;
+    final pitch =
+        rawPitch == null ? null : (invertPitch ? -rawPitch : rawPitch);
+
     return FaceSnapshot(
       timestampMs: timestampMs,
       smileProbability: face.smilingProbability,
       leftEyeOpenProbability: face.leftEyeOpenProbability,
       rightEyeOpenProbability: face.rightEyeOpenProbability,
-      headEulerAngleX: face.headEulerAngleX,
+      headEulerAngleX: pitch,
       headEulerAngleY: yaw,
       headEulerAngleZ: roll,
       noseBase: nose,
