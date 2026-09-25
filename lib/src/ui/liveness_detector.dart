@@ -16,6 +16,8 @@ import '../models/models.dart';
 import '../theme/liveness_theme.dart';
 import 'liveness_overlay.dart';
 
+part 'liveness_controller.dart';
+
 /// Signature for overriding parts of the built-in UI.
 typedef LivenessWidgetBuilder = Widget Function(
   BuildContext context,
@@ -47,6 +49,7 @@ class LivenessDetector extends StatefulWidget {
     this.showCloseButton = true,
     this.cameraResolution = ResolutionPreset.high,
     this.showDebugOverlay = false,
+    this.controller,
   });
 
   /// Read once, when the widget is first inserted. Changing it on a
@@ -65,8 +68,9 @@ class LivenessDetector extends StatefulWidget {
   /// `if (context.mounted) Navigator.pop(context, result);`. Captures still
   /// being encoded at that moment are not included.
   ///
-  /// `metadata['cancelledBy']` is `'user'` (close button or controller),
-  /// `'lifecycle'` (app sent to background) or `'dispose'`.
+  /// `metadata['cancelledBy']` is `'user'` (close button or
+  /// [LivenessController.cancel]), `'lifecycle'` (app sent to background),
+  /// `'restart'` ([LivenessController.restart]) or `'dispose'`.
   final FutureOr<void> Function(LivenessResult result) onResult;
 
   final LivenessTheme theme;
@@ -104,12 +108,88 @@ class LivenessDetector extends StatefulWidget {
   /// development and threshold tuning — leave off in production.
   final bool showDebugOverlay;
 
+  /// Optional handle to read state, cancel or restart from outside the
+  /// widget (e.g. a custom close button when [showCloseButton] is false).
+  /// When null, the widget uses an internal one.
+  final LivenessController? controller;
+
   @override
   State<LivenessDetector> createState() => _LivenessDetectorState();
 }
 
-class _LivenessDetectorState extends State<LivenessDetector>
+class _LivenessDetectorState extends State<LivenessDetector> {
+  LivenessController? _internalController;
+  int _generation = 0;
+
+  LivenessController get _controller =>
+      widget.controller ?? (_internalController ??= LivenessController());
+
+  @override
+  void initState() {
+    super.initState();
+    _controller._host = this;
+  }
+
+  @override
+  void didUpdateWidget(LivenessDetector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final old = oldWidget.controller ?? _internalController;
+    if (old != _controller) {
+      old?._host = null;
+      if (old != null &&
+          old == _internalController &&
+          widget.controller != null) {
+        _internalController = null;
+        old.dispose();
+      }
+      _controller._host = this;
+    }
+  }
+
+  /// Ends the current run (its result is still delivered) and starts a new
+  /// one with a fresh session, session ID and shuffle.
+  Future<void> _restart() {
+    _controller._currentRun?._markRestart();
+    final started = _controller._expectRun();
+    setState(() => _generation++);
+    return started;
+  }
+
+  @override
+  void dispose() {
+    if (_controller._host == this) _controller._host = null;
+    _internalController?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _LivenessRun(
+        key: ValueKey(_generation),
+        detector: widget,
+        controller: _controller,
+      );
+}
+
+/// One liveness session. Replaced wholesale (new key) on restart, so no
+/// per-session state can leak into the next session.
+class _LivenessRun extends StatefulWidget {
+  const _LivenessRun({
+    super.key,
+    required this.detector,
+    required this.controller,
+  });
+
+  final LivenessDetector detector;
+  final LivenessController controller;
+
+  @override
+  State<_LivenessRun> createState() => _LivenessRunState();
+}
+
+class _LivenessRunState extends State<_LivenessRun>
     with WidgetsBindingObserver {
+  LivenessDetector get _d => widget.detector;
+
   late final LivenessFrameSource _source;
   bool _sourceReady = false;
   late LivenessSession _session;
@@ -152,9 +232,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
     WidgetsBinding.instance.addObserver(this);
     _startedAt = DateTime.now();
     _sessionId = _generateSessionId();
-    _source = createFrameSource(widget.config, widget.cameraResolution);
+    _source = createFrameSource(_d.config, _d.cameraResolution);
     try {
-      _session = LivenessSession(widget.config);
+      _session = LivenessSession(_d.config);
     } on ArgumentError catch (e, st) {
       // Invalid config: never touch the camera. A placeholder session
       // carries the failed state so the UI and result path work as usual.
@@ -164,7 +244,25 @@ class _LivenessDetectorState extends State<LivenessDetector>
       );
     }
     _session.addEventListener(_onSessionEvent);
+    _session.state.addListener(_onStateChanged);
+    widget.controller._attach(this);
     _init();
+  }
+
+  void _onStateChanged() => widget.controller._scheduleNotify();
+
+  @override
+  void didUpdateWidget(_LivenessRun oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller._detach(this);
+      widget.controller._attach(this);
+    }
+  }
+
+  /// Called just before a restart replaces this run.
+  void _markRestart() {
+    if (!_finished && !_session.isTerminal) _cancelledBy = 'restart';
   }
 
   (ArgumentError, StackTrace)? _configError;
@@ -173,12 +271,13 @@ class _LivenessDetectorState extends State<LivenessDetector>
     final configError = _configError;
     if (configError != null) {
       final (error, stackTrace) = configError;
-      widget.onError?.call(error, stackTrace);
+      _d.onError?.call(error, stackTrace);
       _extraMetadata['configError'] = error.toString();
       _session.systemError();
+      widget.controller._runStarted(this);
       return;
     }
-    if (widget.config.boostScreenBrightness) {
+    if (_d.config.boostScreenBrightness) {
       // Best-effort: brightness control can be unavailable (e.g. some
       // OEMs); never block (or even delay) the session on it.
       try {
@@ -191,12 +290,13 @@ class _LivenessDetectorState extends State<LivenessDetector>
       await _source.start(
         _onFrame,
         onError: (e, st) {
-          widget.onError?.call(e, st);
+          _d.onError?.call(e, st);
           _session.systemError();
         },
       );
       if (!mounted) return;
       _sourceReady = true;
+      widget.controller._runStarted(this);
 
       _session.start();
       // Timeouts must fire even if the camera stops delivering frames.
@@ -206,8 +306,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
       );
       setState(() {});
     } catch (e, st) {
-      widget.onError?.call(e, st);
+      _d.onError?.call(e, st);
       _session.systemError();
+      if (mounted) widget.controller._runStarted(this);
     }
   }
 
@@ -250,7 +351,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
 
     try {
       // Cheap quality metrics + replay hash (subsampled luma, <1 ms).
-      final config = widget.config;
+      final config = _d.config;
       FrameQuality? quality;
       if (config.enableQualityChecks || config.enableReplayGuard) {
         quality = _source.analyzeQuality(image);
@@ -271,7 +372,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
             guidance: qualityIssue,
             qualityHold: true,
           );
-          if (widget.showDebugOverlay && mounted) setState(() {});
+          if (_d.showDebugOverlay && mounted) setState(() {});
           return;
         }
       }
@@ -303,9 +404,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
         guidance: positionIssue ?? FaceGuidance.none,
         spoofSuspected: config.enableReplayGuard && _spoofGuard.replaySuspected,
       );
-      if (widget.showDebugOverlay && mounted) setState(() {});
+      if (_d.showDebugOverlay && mounted) setState(() {});
     } catch (e, st) {
-      widget.onError?.call(e, st);
+      _d.onError?.call(e, st);
     } finally {
       _busy = false;
     }
@@ -331,23 +432,23 @@ class _LivenessDetectorState extends State<LivenessDetector>
   void _onSessionEvent(LivenessEvent event) {
     switch (event) {
       case ReferenceReadyEvent():
-        if (widget.config.captureImages &&
-            widget.config.captureReferenceImage) {
+        if (_d.config.captureImages &&
+            _d.config.captureReferenceImage) {
           _captureFrame(null, kind: CaptureKind.reference);
         }
       case ActionStartedEvent(:final action, :final index):
         _peak = null;
-        widget.onActionStarted?.call(action, index);
+        _d.onActionStarted?.call(action, index);
       case ActionPeakEvent(:final index, :final timestampMs):
         final frame = _analysedFrame;
         if (frame != null) {
           _peak = (frame: frame, index: index, timestampMs: timestampMs);
         }
       case ActionCompletedEvent(:final action, :final index):
-        widget.onActionCompleted?.call(action, index);
-        if (widget.config.captureImages) {
+        _d.onActionCompleted?.call(action, index);
+        if (_d.config.captureImages) {
           final peak = _peak;
-          if (widget.config.captureAtPeak &&
+          if (_d.config.captureAtPeak &&
               peak != null &&
               peak.index == index) {
             _captureFrame(
@@ -363,11 +464,11 @@ class _LivenessDetectorState extends State<LivenessDetector>
         _peak = null;
       case SessionCompletedEvent():
         final assisted =
-            widget.config.cameraMode == LivenessCameraMode.assisted;
-        if (widget.config.enableFlashChallenge && !assisted) {
+            _d.config.cameraMode == LivenessCameraMode.assisted;
+        if (_d.config.enableFlashChallenge && !assisted) {
           _runFlashChallenge().whenComplete(() => _finish(success: true));
         } else {
-          if (widget.config.enableFlashChallenge && assisted) {
+          if (_d.config.enableFlashChallenge && assisted) {
             // Screen faces the operator, not the subject — the challenge
             // is physically meaningless here.
             _extraMetadata['flashChallenge'] = 'skippedAssistedMode';
@@ -390,8 +491,8 @@ class _LivenessDetectorState extends State<LivenessDetector>
     final source = frame ?? _analysedFrame ?? _lastFrame;
     if (source == null) return;
     final ts = timestampMs ?? _source.elapsedMs;
-    final maxDimension = widget.config.maxImageDimension;
-    final quality = widget.config.jpegQuality;
+    final maxDimension = _d.config.maxImageDimension;
+    final quality = _d.config.jpegQuality;
     // Copies the pixels now; the encode itself runs in an isolate.
     final encoding = _source.encodeJpeg(
       source,
@@ -403,7 +504,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
       try {
         bytes = await encoding;
       } catch (e, st) {
-        widget.onError?.call(e, st);
+        _d.onError?.call(e, st);
         // Isolate failed: encode synchronously rather than lose the capture.
         try {
           bytes = await _source.encodeJpeg(
@@ -413,7 +514,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
             background: false,
           );
         } catch (e, st) {
-          widget.onError?.call(e, st);
+          _d.onError?.call(e, st);
         }
       }
       if (bytes != null) {
@@ -431,7 +532,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
 
   /// Steady-rate frame-sequence capture ([CaptureType.frameSequence]).
   void _maybeCaptureSequenceFrame(Object image) {
-    if (!widget.config.captureFrameSequence) return;
+    if (!_d.config.captureFrameSequence) return;
     // Only capture while the session is actively verifying.
     final phase = _session.current.phase;
     if (phase != LivenessPhase.performingAction &&
@@ -439,9 +540,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
       return;
     }
     final now = _source.elapsedMs;
-    final intervalMs = 1000 ~/ widget.config.frameSequenceFps.clamp(1, 15);
+    final intervalMs = 1000 ~/ _d.config.frameSequenceFps.clamp(1, 15);
     if (now - _lastSeqCaptureMs < intervalMs) return;
-    if (_frames.length + _seqInFlight >= widget.config.frameSequenceMaxFrames) {
+    if (_frames.length + _seqInFlight >= _d.config.frameSequenceMaxFrames) {
       return;
     }
     if (_seqInFlight >= 3) return; // don't queue up if encoding lags
@@ -450,8 +551,8 @@ class _LivenessDetectorState extends State<LivenessDetector>
     _seqInFlight++;
     final encoding = _source.encodeJpeg(
       image,
-      maxDimension: widget.config.maxImageDimension,
-      quality: widget.config.jpegQuality,
+      maxDimension: _d.config.maxImageDimension,
+      quality: _d.config.jpegQuality,
     );
     _pendingEncodes.add(() async {
       try {
@@ -469,7 +570,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
       } catch (e, st) {
         // Sequence frames are lossy by design — skip on failure, no
         // synchronous fallback (that would jank the pipeline repeatedly).
-        widget.onError?.call(e, st);
+        _d.onError?.call(e, st);
       } finally {
         _seqInFlight--;
       }
@@ -487,7 +588,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     try {
       _videoPath = await _source.stop();
     } catch (e, st) {
-      widget.onError?.call(e, st);
+      _d.onError?.call(e, st);
     }
     _extraMetadata.addAll(_source.metadata);
 
@@ -502,7 +603,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (_resultDelivered) return; // disposed meanwhile; already delivered
     _resultDelivered = true;
-    await widget.onResult(result);
+    await _d.onResult(result);
   }
 
   /// Snapshot of everything collected so far. Synchronous, so `dispose`
@@ -517,10 +618,10 @@ class _LivenessDetectorState extends State<LivenessDetector>
       ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
 
     // Composite confidence: clean sessions on a real camera score ≥ 0.9.
-    final completedRatio = widget.config.actions.isEmpty
+    final completedRatio = _d.config.actions.isEmpty
         ? 0.0
         : _session.current.completedActions.length /
-            widget.config.actions.length;
+            _d.config.actions.length;
     var confidence = success ? 1.0 : 0.5 * completedRatio;
     confidence -= _spoofGuard.confidencePenalty;
     confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
@@ -543,7 +644,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
         ..._extraMetadata,
         ..._spoofGuard.metadata,
         'confidence_qualityViolations': _qualityViolations,
-        'cameraMode': widget.config.cameraMode.name,
+        'cameraMode': _d.config.cameraMode.name,
         if (reason == LivenessFailureReason.cancelled)
           'cancelledBy': _cancelledBy ?? 'user',
       },
@@ -605,21 +706,21 @@ class _LivenessDetectorState extends State<LivenessDetector>
     } else if (state.phase == LivenessPhase.failed) {
       result = _buildResult(success: false, reason: state.failureReason);
     } else {
-      _cancelledBy = 'dispose';
+      _cancelledBy ??= 'dispose';
       result = _buildResult(
         success: false,
         reason: LivenessFailureReason.cancelled,
       );
     }
     try {
-      final pending = widget.onResult(result);
+      final pending = _d.onResult(result);
       if (pending is Future<void>) {
         pending.catchError((Object e, StackTrace st) {
-          widget.onError?.call(e, st);
+          _d.onError?.call(e, st);
         });
       }
     } catch (e, st) {
-      widget.onError?.call(e, st);
+      _d.onError?.call(e, st);
     }
   }
 
@@ -628,16 +729,17 @@ class _LivenessDetectorState extends State<LivenessDetector>
     WidgetsBinding.instance.removeObserver(this);
     _finished = true;
     _deliverOnDispose();
+    widget.controller._detach(this);
     _ticker?.cancel();
     _flashTint.dispose();
-    if (widget.config.boostScreenBrightness) {
+    if (_d.config.boostScreenBrightness) {
       // Restore the user's brightness (fire-and-forget).
       ScreenBrightness.instance
           .resetApplicationScreenBrightness()
           .catchError((_) {});
     }
     final videoPath = _videoPath;
-    if (widget.config.autoDeleteVideo && videoPath != null) {
+    if (_d.config.autoDeleteVideo && videoPath != null) {
       // Fire-and-forget; the file is in temp storage anyway.
       File(videoPath).delete().catchError((_) => File(videoPath));
     }
@@ -658,12 +760,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
             preview ?? const ColoredBox(color: Colors.black),
 
             // Overlay (scrim + oval + progress).
-            if (widget.overlayBuilder != null)
-              widget.overlayBuilder!(context, state)
+            if (_d.overlayBuilder != null)
+              _d.overlayBuilder!(context, state)
             else
               CustomPaint(
                 painter: LivenessOverlayPainter(
-                  theme: widget.theme,
+                  theme: _d.theme,
                   faceInPosition: state.faceInPosition,
                   progress: state.phase == LivenessPhase.completed
                       ? 1
@@ -677,11 +779,11 @@ class _LivenessDetectorState extends State<LivenessDetector>
               alignment: const Alignment(0, 0.72),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: widget.instructionBuilder != null
-                    ? widget.instructionBuilder!(context, state)
+                child: _d.instructionBuilder != null
+                    ? _d.instructionBuilder!(context, state)
                     : DefaultInstructionPanel(
                         state: state,
-                        theme: widget.theme,
+                        theme: _d.theme,
                       ),
               ),
             ),
@@ -698,14 +800,14 @@ class _LivenessDetectorState extends State<LivenessDetector>
                   child: tint == null
                       ? null
                       : Text(
-                          widget.theme.strings.holdStill,
-                          style: widget.theme.instructionStyle,
+                          _d.theme.strings.holdStill,
+                          style: _d.theme.instructionStyle,
                         ),
                 ),
               ),
             ),
 
-            if (widget.showCloseButton)
+            if (_d.showCloseButton)
               SafeArea(
                 child: Align(
                   alignment: Alignment.topLeft,
@@ -716,7 +818,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
                 ),
               ),
 
-            if (widget.showDebugOverlay)
+            if (_d.showDebugOverlay)
               SafeArea(
                 child: Align(
                   alignment: Alignment.topRight,

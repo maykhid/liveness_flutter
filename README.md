@@ -271,6 +271,30 @@ frame. The example app has a full working custom UI behind a toggle.
 
 </details>
 
+## 🎮 Controlling it from outside: `LivenessController`
+
+Hid the close button, or want a "Try again" button? Pass a controller:
+
+```dart
+final controller = LivenessController(); // create in initState, dispose in dispose
+
+LivenessDetector(
+  controller: controller,
+  showCloseButton: false,
+  config: ...,
+  onResult: ...,
+);
+
+controller.cancel();         // onResult gets a cancelled result (cancelledBy: 'user')
+await controller.restart();  // fresh session: new sessionId, new shuffle
+controller.state;            // live LivenessSessionState (it's a ChangeNotifier)
+controller.actionPlan;       // the actions in the order this session runs them
+```
+
+Every session still gets exactly one `onResult`: restarting a session
+that's still running delivers it as `cancelled` with
+`cancelledBy: 'restart'`.
+
 ## 🧑‍🤝‍🧑 Assisted mode: verifying someone else (opt-in)
 
 By default the person being verified holds the phone and uses the front

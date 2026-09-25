@@ -60,6 +60,11 @@
   (default 0) and `retryDelay` (default 1 s, doubling): network errors,
   timeouts and 5xx responses are retried; 4xx never are.
   `LivenessUploadException`.
+- `LivenessController` (`LivenessDetector.controller`, optional): read
+  `state`, `actionPlan` and `sessionId`, and call `cancel()` or `restart()`
+  from outside the widget. `restart()` starts a fresh session (new session
+  ID, new shuffle, new camera) and still delivers exactly one result per
+  session (`cancelledBy: 'restart'` for an interrupted one).
 
 ### Fixed
 

@@ -88,6 +88,12 @@ class CameraFrameSource implements LivenessFrameSource {
   final LivenessConfig config;
   final ResolutionPreset resolution;
 
+  /// Completes when the most recently disposed source has released the
+  /// camera. A new source waits for it, so a restart (or quickly pushing a
+  /// new liveness screen) never tries to open a camera that is still
+  /// closing.
+  static Future<void> _released = Future.value();
+
   final Stopwatch _clock = Stopwatch()..start();
   CameraController? _controller;
   FaceDetector? _faceDetector;
@@ -124,6 +130,11 @@ class CameraFrameSource implements LivenessFrameSource {
       _framesSeen++;
       onFrame(image);
     }
+
+    try {
+      await _released;
+    } catch (_) {}
+    if (_disposed) return;
 
     final wantedDirection =
         _assisted ? CameraLensDirection.back : CameraLensDirection.front;
@@ -279,11 +290,21 @@ class CameraFrameSource implements LivenessFrameSource {
   }
 
   @override
-  Future<void> dispose() async {
+  Future<void> dispose() {
     _disposed = true;
     _videoWatchdog?.cancel();
-    await _controller?.dispose();
-    await _faceDetector?.close();
+    final controller = _controller;
+    final detector = _faceDetector;
+    // Errors are swallowed: nobody awaits a dispose, and a failed release
+    // must not block the next source from trying.
+    return _released = () async {
+      try {
+        await controller?.dispose();
+      } catch (_) {}
+      try {
+        await detector?.close();
+      } catch (_) {}
+    }();
   }
 }
 
