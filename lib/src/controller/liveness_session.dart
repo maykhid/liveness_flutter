@@ -228,6 +228,7 @@ class LivenessSession {
   /// [qualityHold] — frame is unusable (too dark/blurry): pause without
   /// counting toward face-lost failure.
   /// [spoofSuspected] — replay guard tripped: fail immediately.
+  /// [faceChanged] — identity guard saw a face swap: fail immediately.
   void onFrame({
     required List<FaceSnapshot> faces,
     required bool faceInPosition,
@@ -235,11 +236,16 @@ class LivenessSession {
     FaceGuidance guidance = FaceGuidance.none,
     bool qualityHold = false,
     bool spoofSuspected = false,
+    bool faceChanged = false,
   }) {
     if (isTerminal || current.phase == LivenessPhase.initializing) return;
 
     if (spoofSuspected) {
       _fail(LivenessFailureReason.spoofSuspected);
+      return;
+    }
+    if (faceChanged) {
+      _fail(LivenessFailureReason.faceChanged);
       return;
     }
 

@@ -13,6 +13,7 @@ import '../camera/frame_quality.dart';
 import '../camera/frame_source.dart';
 import '../controller/liveness_session.dart';
 import '../detection/flash_challenge.dart';
+import '../detection/identity_guard.dart';
 import '../detection/spoof_guard.dart';
 import '../models/models.dart';
 import '../theme/liveness_theme.dart';
@@ -246,6 +247,7 @@ class _LivenessRunState extends State<_LivenessRun>
   String? _videoPath;
 
   final SpoofGuard _spoofGuard = SpoofGuard();
+  final IdentityGuard _identityGuard = IdentityGuard();
   FlashChallenge? _flashChallenge;
   final ValueNotifier<Color?> _flashTint = ValueNotifier(null);
   Size? _viewSize;
@@ -440,6 +442,7 @@ class _LivenessRunState extends State<_LivenessRun>
         final qualityIssue = quality.issueFor(config);
         if (qualityIssue != null) {
           _qualityViolations++;
+          _identityGuard.onFrame(null); // unseen: may hide a swap
           _analysedFrame = image;
           _session.onFrame(
             faces: const [],
@@ -465,6 +468,7 @@ class _LivenessRunState extends State<_LivenessRun>
       _lastSnapshot = primary;
 
       _spoofGuard.onFrame(hash: quality?.hash, face: primary);
+      _identityGuard.onFrame(primary);
 
       final positionIssue = primary == null
           ? FaceGuidance.noFace
@@ -479,6 +483,7 @@ class _LivenessRunState extends State<_LivenessRun>
         timestampMs: now,
         guidance: positionIssue ?? FaceGuidance.none,
         spoofSuspected: config.enableReplayGuard && _spoofGuard.replaySuspected,
+        faceChanged: config.failOnFaceChange && _identityGuard.faceChanged,
       );
       if (_d.showDebugOverlay && mounted) setState(() {});
     } catch (e, st) {
@@ -780,6 +785,7 @@ class _LivenessRunState extends State<_LivenessRun>
         : _session.current.completedActions.length / planned;
     var confidence = success ? 1.0 : 0.5 * completedRatio;
     confidence -= _spoofGuard.confidencePenalty;
+    confidence -= _identityGuard.confidencePenalty;
     confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
     confidence -= _flashPenalty;
     confidence = confidence.clamp(0.0, 1.0);
@@ -801,6 +807,7 @@ class _LivenessRunState extends State<_LivenessRun>
         ..._session.metadata,
         ..._extraMetadata,
         ..._spoofGuard.metadata,
+        ..._identityGuard.metadata,
         'confidence_qualityViolations': _qualityViolations,
         'cameraMode': _d.config.cameraMode.name,
         if (reason == LivenessFailureReason.cancelled)

@@ -44,6 +44,8 @@
   timestampMs)`. The flash challenge is stricter, so borderline real faces
   that passed before may now be `failed` (it still only lowers the
   confidence score).
+- New `LivenessFailureReason.faceChanged`. ML Kit face tracking is now
+  enabled when no action needs contours.
 
 ### Added
 
@@ -120,6 +122,13 @@
 - `LivenessConfig.flashAllowedMisses` (default 0); `FlashChallenge` gains
   `beginPhase()`, `allowedMisses`, `k`, `settle`, `minDelta` and
   `sampleRgb(region:)`.
+- Identity continuity (`IdentityGuard`): ML Kit tracking is now on
+  whenever no action needs contours; a tracking-ID change while a face stays
+  in view lowers the confidence score and is reported in
+  `metadata['identity_*']`, as are jumps in a rough face-geometry signature
+  (`FaceSnapshot.identitySignature`). `LivenessConfig.failOnFaceChange`
+  (opt-in) fails such sessions with the new
+  `LivenessFailureReason.faceChanged`.
 
 ### Fixed
 

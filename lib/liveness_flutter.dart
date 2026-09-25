@@ -8,6 +8,7 @@ export 'src/camera/detection_geometry.dart' show TargetShape;
 export 'src/camera/frame_quality.dart' show FrameQuality;
 export 'src/camera/liveness_capabilities.dart';
 export 'src/detection/flash_challenge.dart' show FlashChallenge;
+export 'src/detection/identity_guard.dart';
 export 'src/detection/spoof_guard.dart';
 export 'src/models/models.dart';
 export 'src/theme/liveness_theme.dart';

@@ -135,8 +135,10 @@ FaceSnapshot face({
   double yaw = 0,
   double pitch = 0,
   Rect box = const Rect.fromLTWH(0.3, 0.3, 0.4, 0.4),
+  int? trackingId,
 }) =>
     FaceSnapshot(
+      trackingId: trackingId,
       timestampMs: 0,
       smileProbability: smile,
       leftEyeOpenProbability: eyes,

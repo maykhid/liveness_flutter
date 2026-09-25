@@ -128,6 +128,10 @@ enum LivenessFailureReason {
   /// Camera or ML pipeline error.
   systemError,
 
+  /// The tracked face changed while a face stayed in view (only with
+  /// [LivenessConfig.failOnFaceChange]).
+  faceChanged,
+
   /// [LivenessConfig.challenge] had expired (checked against the device
   /// clock at start and at completion; your server must check too).
   challengeExpired,
@@ -215,6 +219,7 @@ class FaceSnapshot {
     this.mouthOpenRatio,
     required this.boundingBox,
     this.trackingId,
+    this.identitySignature,
   });
 
   /// Frame timestamp in milliseconds (monotonic).
@@ -245,7 +250,15 @@ class FaceSnapshot {
   /// Face bounding box, normalized to image size (0..1).
   final Rect boundingBox;
 
+  /// ML Kit's tracking ID (only when tracking is on, i.e. no action needs
+  /// contours).
   final int? trackingId;
+
+  /// Rough face-geometry fingerprint, used to notice a different face
+  /// mid-session: (inter-ocular distance, nose-to-mouth distance), each
+  /// divided by the square root of the box area. Null without contours or
+  /// landmarks. Only comparable between near-frontal frames.
+  final (double, double)? identitySignature;
 
   /// Bounding-box area as a fraction of the image (0..1).
   double get area => boundingBox.width * boundingBox.height;
@@ -580,6 +593,7 @@ class LivenessConfig {
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
     this.hapticFeedback = false,
+    this.failOnFaceChange = false,
     this.challenge,
     this.attestor,
   })  : assert(jpegQuality >= 1 && jpegQuality <= 100,
@@ -849,6 +863,16 @@ class LivenessConfig {
   /// stronger one when the session passes or fails (not on a cancel).
   /// Opt-in. For sounds or TTS, use `LivenessDetector.onFeedback`.
   final bool hapticFeedback;
+
+  /// Fail with [LivenessFailureReason.faceChanged] when ML Kit's tracking
+  /// ID changes while a face stayed continuously in view — a sign that a
+  /// photo or person was swapped mid-session. Off by default: on some
+  /// devices a very fast head turn can make ML Kit re-assign the ID. Either
+  /// way the change lowers `confidenceScore` and is reported in
+  /// `metadata['identity_*']`. Needs tracking, which is off when an action
+  /// needs contours ([LivenessAction.openMouth],
+  /// [LivenessAction.fullTeethSmile]).
+  final bool failOnFaceChange;
 
   bool get captureImages => capture.contains(CaptureType.images);
   bool get captureVideo => capture.contains(CaptureType.video);

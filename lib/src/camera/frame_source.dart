@@ -194,8 +194,9 @@ class CameraFrameSource implements LivenessFrameSource {
       options: FaceDetectorOptions(
         enableClassification: true,
         // ML Kit: contour detection should not be combined with tracking
-        // (contours may come back empty). We don't use tracking IDs.
-        enableTracking: false,
+        // (contours may come back empty). Tracking IDs feed the identity
+        // check, so it's on whenever no action needs contours.
+        enableTracking: !_needsContours,
         enableContours: _needsContours,
         enableLandmarks: _needsLandmarks,
         performanceMode: FaceDetectorMode.fast,

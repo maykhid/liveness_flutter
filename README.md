@@ -506,6 +506,14 @@ blurry frames pause the session (they won't fail it) with a hint like
 "Find better lighting". Thresholds: `brightnessMin`, `brightnessMax`,
 `sharpnessMin`; disable with `enableQualityChecks: false`.
 
+**Same person throughout?** With ML Kit tracking (on unless an action
+needs contours), a face ID that changes while a face stays in view lowers
+the confidence score and shows up in `metadata['identity_*']`, along with
+jumps in rough face geometry. Set `failOnFaceChange: true` to fail such
+sessions outright. It's off by default because a very fast head turn can
+make some devices re-assign the ID. This is no substitute for server-side
+face matching.
+
 **The anti-spoof checks are honest heuristics, not magic.** The replay
 guard catches static images and naive injected feeds; micro-motion flags
 unnaturally still sessions in the confidence score. Neither stops a

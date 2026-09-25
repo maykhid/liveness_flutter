@@ -455,6 +455,54 @@ void main() {
       reason: 'frames are captured during the flash',
     );
   });
+
+  group('S2 identity continuity in the widget', () {
+    Future<(LivenessController, List<LivenessResult>)> start(
+      WidgetTester tester, {
+      bool failOnFaceChange = false,
+    }) async {
+      usePhoneScreen(tester);
+      final controller = LivenessController();
+      addTearDown(controller.dispose);
+      final results = <LivenessResult>[];
+      await tester.pumpWidget(MaterialApp(
+        home: LivenessDetector(
+          controller: controller,
+          config: LivenessConfig(
+            actions: const [LivenessAction.smile],
+            failOnFaceChange: failOnFaceChange,
+          ),
+          onResult: results.add,
+        ),
+      ));
+      await tester.pump();
+      return (controller, results);
+    }
+
+    testWidgets('failOnFaceChange fails on a swap while in view',
+        (tester) async {
+      final (controller, results) =
+          await start(tester, failOnFaceChange: true);
+      await harness.step(tester, [face(trackingId: 1)]);
+      await harness.step(tester, [face(trackingId: 1)]);
+      await harness.step(tester, [face(trackingId: 7)]);
+      await tester.pump(const Duration(seconds: 1));
+      expect(results.single.failureReason, LivenessFailureReason.faceChanged);
+    });
+
+    testWidgets('by default a swap only lowers confidence and is reported',
+        (tester) async {
+      final (controller, results) = await start(tester);
+      await harness.step(tester, [face(trackingId: 1)]);
+      await harness.step(tester, [face(trackingId: 7)]);
+      await harness.hold(tester, [face(smile: 0.9, trackingId: 7)], 700);
+      await tester.pump(const Duration(seconds: 1));
+      final result = results.single;
+      expect(result.success, isTrue);
+      expect(result.metadata['identity_trackingIdChangesContinuous'], 1);
+      expect(result.confidenceScore, lessThan(0.9));
+    });
+  });
 }
 
 class _RecordingAttestor extends LivenessAttestor {

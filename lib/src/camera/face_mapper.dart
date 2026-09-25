@@ -92,6 +92,50 @@ class FaceMapper {
       mouthOpenRatio: _mouthOpenRatio(face),
       boundingBox: normRect(face.boundingBox),
       trackingId: face.trackingId,
+      identitySignature: _identitySignature(face),
+    );
+  }
+
+  /// Distances are ratios of the same frame, so no normalisation to image
+  /// size is needed; dividing by √(box area) makes them independent of
+  /// distance and of portrait/landscape coordinates.
+  (double, double)? _identitySignature(Face face) {
+    math.Point<double>? centroid(FaceContourType type) {
+      final points = face.contours[type]?.points;
+      if (points == null || points.isEmpty) return null;
+      var x = 0.0, y = 0.0;
+      for (final p in points) {
+        x += p.x;
+        y += p.y;
+      }
+      return math.Point(x / points.length, y / points.length);
+    }
+
+    math.Point<double>? landmark(FaceLandmarkType type) {
+      final p = face.landmarks[type]?.position;
+      return p == null ? null : math.Point(p.x.toDouble(), p.y.toDouble());
+    }
+
+    final leftEye = centroid(FaceContourType.leftEye) ??
+        landmark(FaceLandmarkType.leftEye);
+    final rightEye = centroid(FaceContourType.rightEye) ??
+        landmark(FaceLandmarkType.rightEye);
+    final nose = centroid(FaceContourType.noseBottom) ??
+        landmark(FaceLandmarkType.noseBase);
+    final mouth = centroid(FaceContourType.upperLipTop) ??
+        landmark(FaceLandmarkType.bottomMouth);
+    final box = face.boundingBox;
+    final scale = math.sqrt(box.width * box.height);
+    if (leftEye == null ||
+        rightEye == null ||
+        nose == null ||
+        mouth == null ||
+        scale <= 0) {
+      return null;
+    }
+    return (
+      leftEye.distanceTo(rightEye) / scale,
+      nose.distanceTo(mouth) / scale,
     );
   }
 
