@@ -109,6 +109,10 @@
   and an optional `LivenessAttestor` (`LivenessConfig.attestor`) that signs
   `LivenessResult.attestationPayload` into `LivenessResult.attestation`.
   New guide: `doc/server_verification.md`. New dependency: `crypto`.
+- `LivenessConfig.randomActionCount`: pick N actions at random from
+  `actions` (a pool) and shuffle them, per session. Docs now recommend at
+  least one motion action, since pose-only actions can be satisfied by a
+  photo.
 
 ### Fixed
 
@@ -174,6 +178,8 @@
   `actionInstructions` or `guidanceMessages` map made every missing entry
   fall back to raw enum names like `lookLeft`. User maps are now merged over
   the defaults.
+- The failure confidence score divided progress by `config.actions.length`
+  rather than the number of actions actually planned for the session.
 
 # 0.4.4
 

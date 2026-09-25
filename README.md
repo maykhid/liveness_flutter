@@ -81,6 +81,15 @@ LivenessDetector(
 > someone could record a video of a person doing that exact sequence and
 > play it to the camera. Random order means yesterday's recording won't
 > match today's sequence.
+>
+> Go further with `randomActionCount: 3`: each session picks 3 actions at
+> random from your list *and* shuffles them. From all 13 actions that's
+> 1,716 possible sequences instead of 6.
+>
+> 🛡️ Include at least one **motion** action (`blink`, `nod`, `openMouth`,
+> `drawCircleWithNose`). Pose-only actions (`smile`, `tiltLeft`/`tiltRight`,
+> `lookUp`/`lookDown`) can be faked with a photo tilted or swapped at the
+> right moment.
 
 ## ⚙️ Setting up Android and iOS
 

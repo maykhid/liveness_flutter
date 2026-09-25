@@ -377,6 +377,42 @@ void main() {
       expect(errors, isNotEmpty);
     });
   });
+
+  testWidgets('S4 confidence counts progress against the executed plan',
+      (tester) async {
+    usePhoneScreen(tester);
+    final controller = LivenessController();
+    addTearDown(controller.dispose);
+    final results = <LivenessResult>[];
+    await tester.pumpWidget(MaterialApp(
+      home: LivenessDetector(
+        controller: controller,
+        config: const LivenessConfig(
+          actions: [
+            LivenessAction.smile,
+            LivenessAction.lookLeft,
+            LivenessAction.lookRight,
+          ],
+          randomActionCount: 2,
+          requireNeutralBetweenActions: false,
+        ),
+        onResult: results.add,
+      ),
+    ));
+    await tester.pump();
+    FaceSnapshot doing(LivenessAction a) => switch (a) {
+          LivenessAction.smile => face(smile: 0.9),
+          LivenessAction.lookLeft => face(yaw: 30),
+          _ => face(yaw: -30),
+        };
+    await harness.step(tester, [face()]);
+    await harness.hold(tester, [doing(controller.actionPlan.first)], 700);
+    expect(controller.state.completedActions, hasLength(1));
+    controller.cancel();
+    await tester.pump(const Duration(seconds: 1));
+    // 1 of 2 planned actions: 0.5 × ½ (not ⅓ of the 3-action pool).
+    expect(results.single.confidenceScore, closeTo(0.25, 1e-9));
+  });
 }
 
 class _RecordingAttestor extends LivenessAttestor {

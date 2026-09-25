@@ -62,12 +62,7 @@ class LivenessSession {
   /// [now] (default `DateTime.now`) is used to refuse an expired one.
   LivenessSession(this.config, {Random? random, DateTime Function()? now})
       : _now = now ?? DateTime.now,
-        _actions = config.challenge != null
-            ? List.of(config.challenge!.actions)
-            : config.shuffleActions
-                ? (List.of(config.actions)
-                  ..shuffle(random ?? Random.secure()))
-                : List.of(config.actions) {
+        _actions = _plan(config, random ?? Random.secure()) {
     config.validate();
     _state = ValueNotifier(
       LivenessSessionState(
@@ -81,6 +76,23 @@ class LivenessSession {
 
   final LivenessConfig config;
   final DateTime Function() _now;
+
+  /// Challenge order if any; else a random pick of `randomActionCount`
+  /// from the pool; else the list, shuffled if asked.
+  static List<LivenessAction> _plan(LivenessConfig config, Random random) {
+    final challenge = config.challenge;
+    if (challenge != null) return List.of(challenge.actions);
+    final count = config.randomActionCount;
+    if (count != null) {
+      // Validation happens in the constructor body; clamp so a bad count
+      // reaches validate() instead of throwing a RangeError here.
+      final pool = List.of(config.actions)..shuffle(random);
+      return pool.take(count.clamp(0, pool.length)).toList();
+    }
+    return config.shuffleActions
+        ? (List.of(config.actions)..shuffle(random))
+        : List.of(config.actions);
+  }
 
   bool get _challengeExpired =>
       config.challenge?.isExpiredAt(_now()) ?? false;

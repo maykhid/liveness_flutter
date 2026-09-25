@@ -550,6 +550,7 @@ class LivenessConfig {
   const LivenessConfig({
     required this.actions,
     this.shuffleActions = false,
+    this.randomActionCount,
     this.capture = const {},
     this.actionTimeout = const Duration(seconds: 15),
     this.sessionTimeout = const Duration(minutes: 2),
@@ -604,6 +605,12 @@ class LivenessConfig {
       }
     } else if (actions.isEmpty) {
       throw ArgumentError.value(actions, 'actions', 'must not be empty');
+    } else {
+      final count = randomActionCount;
+      if (count != null && (count < 1 || count > actions.length)) {
+        throw ArgumentError.value(count, 'randomActionCount',
+            'must be between 1 and actions.length (${actions.length})');
+      }
     }
     if (jpegQuality < 1 || jpegQuality > 100) {
       throw ArgumentError.value(jpegQuality, 'jpegQuality', 'must be 1–100');
@@ -667,7 +674,22 @@ class LivenessConfig {
   ///
   /// The executed order is reported in `LivenessResult.completedActions`,
   /// so your backend can verify the sequence it expects.
+  ///
+  /// Security note: pose-only actions ([LivenessAction.smile],
+  /// [LivenessAction.tiltLeft]/[LivenessAction.tiltRight], and
+  /// [LivenessAction.lookUp]/[LivenessAction.lookDown] held) can be
+  /// satisfied by a photo tilted or swapped at the right moment. Include at
+  /// least one motion action: [LivenessAction.blink], [LivenessAction.nod],
+  /// [LivenessAction.drawCircleWithNose] or [LivenessAction.openMouth].
   final bool shuffleActions;
+
+  /// When set, each session picks this many actions at random from
+  /// [actions] (treated as a pool) and runs them in random order,
+  /// whatever [shuffleActions] says. A pool of all 13 actions with 3 picked
+  /// gives 1,716 possible ordered sequences, against 6 for a fixed list of
+  /// three — far harder to pre-record. Ignored when [challenge] is set.
+  /// Must be between 1 and `actions.length`.
+  final int? randomActionCount;
 
   /// Which media to capture: `{}` (none), `{CaptureType.images}`,
   /// `{CaptureType.video}`, or both. This determines how the camera is

@@ -43,6 +43,8 @@ Choosing actions:
   that's tilted or swapped at the right moment.
 - **Pick at random from a pool, per challenge.** Three random actions from
   the 13 give 1,716 ordered sequences, against 6 for a fixed list of three.
+  (Without server challenges, `LivenessConfig.randomActionCount` does this
+  on the device.)
 
 ## 2. Check the upload
 
