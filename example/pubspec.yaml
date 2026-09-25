@@ -4,13 +4,15 @@ publish_to: "none"
 version: 1.0.0
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   liveness_flutter:
     path: ../
+  # Only for the demo's simulated server checks (hashing uploaded files).
+  crypto: ^3.0.3
   permission_handler: ^11.3.0
   video_player: ^2.9.0
 

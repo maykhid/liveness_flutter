@@ -1,12 +1,17 @@
-import 'dart:async';
-import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:video_player/video_player.dart';
+
+import 'src/demo_security.dart';
+import 'src/demo_settings.dart';
+import 'src/liveness_screen.dart';
+import 'src/result_page.dart';
 
 void main() => runApp(const ExampleApp());
+
+final _messenger = GlobalKey<ScaffoldMessengerState>();
 
 class ExampleApp extends StatelessWidget {
   const ExampleApp({super.key});
@@ -15,6 +20,7 @@ class ExampleApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Liveness Example',
+      scaffoldMessengerKey: _messenger,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
@@ -32,688 +38,626 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // Pick your action sequence here. Order matters; shuffle for anti-replay.
-  final List<LivenessAction> _actions = [
-    LivenessAction.blink,
-    LivenessAction.smile,
-    LivenessAction.lookLeft,
-    LivenessAction.lookRight,
-    LivenessAction.nod,
-  ];
+  DemoSettings _s = DemoSettings();
+  final _endpoint = TextEditingController();
+  final List<SessionRecord> _history = [];
 
-  final Set<CaptureType> _capture = {CaptureType.images};
-  bool _shuffle = false;
-  bool _customUi = false;
-  bool _debugOverlay = false;
-  bool _flashChallenge = false;
-  bool _assisted = false;
+  @override
+  void dispose() {
+    _endpoint.dispose();
+    super.dispose();
+  }
 
-  // Optional: point this at your own API to test LivenessUploader.
-  final TextEditingController _endpoint = TextEditingController();
+  void _applyPreset(DemoSettings preset, String name) {
+    setState(() {
+      preset
+        ..endpoint = _s.endpoint
+        ..uploadRetries = _s.uploadRetries;
+      _s = preset;
+    });
+    _messenger.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Preset: $name')));
+  }
 
-  LivenessResult? _lastResult;
+  Future<void> _start({bool brokenConfig = false}) async {
+    if (_s.requestPermissionFirst) {
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        _messenger.currentState?.showSnackBar(const SnackBar(
+          content: Text('Camera permission denied. Turn off "Ask for camera '
+              'permission first" to see how the package handles it.'),
+        ));
+        return;
+      }
+    }
+    if (!mounted) return;
 
-  Future<void> _start() async {
-    final status = await Permission.camera.request();
-    if (!status.isGranted || !mounted) return;
+    LivenessChallenge? challenge;
+    if (_s.challenge != ChallengeMode.off && !brokenConfig) {
+      // In a real app: an HTTP call to your backend.
+      final pool =
+          _s.actions.isEmpty ? LivenessAction.values : _s.actions;
+      challenge = FakeChallengeServer.instance.issue(
+        pool: pool,
+        count: _s.randomCount == 0 ? min(3, pool.length) : _s.randomCount,
+        expired: _s.challenge == ChallengeMode.expired,
+      );
+    }
 
-    final result = await Navigator.push<LivenessResult>(
+    final settings = brokenConfig ? (DemoSettings()..actions = []) : _s;
+    _s.endpoint = _endpoint.text.trim();
+    await Navigator.push<void>(
       context,
       MaterialPageRoute(
         builder: (_) => LivenessScreen(
-          actions: List.of(_actions),
-          shuffle: _shuffle,
-          capture: _capture,
-          customUi: _customUi,
-          debugOverlay: _debugOverlay,
-          flashChallenge: _flashChallenge,
-          assisted: _assisted,
-          endpoint: _endpoint.text.trim(),
+          settings: settings,
+          challenge: challenge,
+          onResult: _onSessionResult,
         ),
       ),
     );
-    if (result != null) setState(() => _lastResult = result);
+  }
+
+  /// Every session lands here — including results delivered after a system
+  /// back, when the liveness screen no longer exists.
+  void _onSessionResult(
+    LivenessResult result,
+    List<String> events,
+    LivenessChallenge? challenge,
+  ) {
+    final record = SessionRecord(
+      result: result,
+      events: events,
+      challenge: challenge,
+      checks: FakeChallengeServer.instance.verify(result),
+      settingsSummary: _s.summary,
+    );
+    if (!mounted) return;
+    setState(() => _history.insert(0, record));
+    _messenger.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text('Session ended: ${record.headline}'),
+        action: SnackBarAction(label: 'View', onPressed: () => _open(record)),
+      ));
+  }
+
+  void _open(SessionRecord record) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultPage(
+          record: record,
+          endpoint: _endpoint.text.trim(),
+          uploadRetries: _s.uploadRetries,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('liveness_flutter example')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Text('Actions (in order)',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text('Presets', style: text.titleMedium),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            children: [
-              for (final action in LivenessAction.values)
-                FilterChip(
-                  label: Text(action.name),
-                  selected: _actions.contains(action),
-                  onSelected: (selected) => setState(() {
-                    selected ? _actions.add(action) : _actions.remove(action);
-                  }),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _actions.isEmpty ? 'Select at least one action' : _actions.map((a) => a.name).join(' → '),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const Divider(height: 32),
-          Text('Capture', style: Theme.of(context).textTheme.titleMedium),
-          CheckboxListTile(
-            title: const Text('Per-action images'),
-            value: _capture.contains(CaptureType.images),
-            onChanged: (v) => setState(() => v!
-                ? _capture.add(CaptureType.images)
-                : _capture.remove(CaptureType.images)),
-          ),
-          CheckboxListTile(
-            title: const Text('Session video (native recording)'),
-            subtitle: const Text('Reliable on iOS; device-dependent on Android'),
-            value: _capture.contains(CaptureType.video),
-            onChanged: (v) => setState(() => v!
-                ? _capture.add(CaptureType.video)
-                : _capture.remove(CaptureType.video)),
-          ),
-          CheckboxListTile(
-            title: const Text('Frame sequence (pseudo-video)'),
-            subtitle: const Text('Steady JPEG frames; works on every device'),
-            value: _capture.contains(CaptureType.frameSequence),
-            onChanged: (v) => setState(() => v!
-                ? _capture.add(CaptureType.frameSequence)
-                : _capture.remove(CaptureType.frameSequence)),
-          ),
-          SwitchListTile(
-            title: const Text('Shuffle action order'),
-            subtitle: const Text('Recommended against replay attacks'),
-            value: _shuffle,
-            onChanged: (v) => setState(() => _shuffle = v),
-          ),
-          SwitchListTile(
-            title: const Text('Assisted mode (back camera + torch)'),
-            subtitle: const Text(
-                'An operator points the phone at someone else and reads the '
-                'instructions out loud — the subject can\'t see the screen. '
-                'Flash challenge is skipped.'),
-            value: _assisted,
-            onChanged: (v) => setState(() => _assisted = v),
-          ),
-          SwitchListTile(
-            title: const Text('Color-flash challenge'),
-            subtitle: const Text(
-                'Anti-replay: screen flashes random colors after the actions '
-                'and checks the face reflects them. Works best indoors.'),
-            value: _flashChallenge,
-            onChanged: (v) => setState(() => _flashChallenge = v),
-          ),
-          SwitchListTile(
-            title: const Text('Debug overlay'),
-            subtitle: const Text(
-                'Live yaw/pitch, eye & smile probabilities, brightness, '
-                'replay-guard counters'),
-            value: _debugOverlay,
-            onChanged: (v) => setState(() => _debugOverlay = v),
-          ),
-          SwitchListTile(
-            title: const Text('Custom UI'),
-            subtitle: const Text(
-                'Demo of overlayBuilder + instructionBuilder (rounded window, '
-                'emoji instructions, step dots)'),
-            value: _customUi,
-            onChanged: (v) => setState(() => _customUi = v),
-          ),
-          const Divider(height: 32),
-          TextField(
-            controller: _endpoint,
-            decoration: const InputDecoration(
-              labelText: 'Upload endpoint (optional)',
-              hintText: 'https://your-api.example.com/liveness',
-              border: OutlineInputBorder(),
+          Wrap(spacing: 8, runSpacing: 4, children: [
+            ActionChip(
+              label: const Text('Quick test'),
+              onPressed: () => _applyPreset(DemoSettings.quick(), 'Quick test'),
             ),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _actions.isEmpty ? null : _start,
+            ActionChip(
+              label: const Text('Server-bound (KYC)'),
+              onPressed: () => _applyPreset(DemoSettings.kyc(), 'KYC'),
+            ),
+            ActionChip(
+              label: const Text('Everything on'),
+              onPressed: () =>
+                  _applyPreset(DemoSettings.everything(), 'Everything on'),
+            ),
+            ActionChip(
+              label: const Text('Accessible'),
+              onPressed: () =>
+                  _applyPreset(DemoSettings.accessible(), 'Accessible'),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          ..._sections(context),
+          const SizedBox(height: 8),
+          _HowToTest(onBrokenConfig: () => _start(brokenConfig: true)),
+          if (_history.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Sessions', style: text.titleMedium),
+            for (final r in _history)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  r.result.success ? Icons.verified : Icons.error_outline,
+                  color: r.result.success ? Colors.green : Colors.red,
+                ),
+                title: Text(r.headline),
+                subtitle: Text(
+                  '${(r.result.confidenceScore * 100).toStringAsFixed(0)} % · '
+                  '${r.result.completedActions.length} action(s) · '
+                  '${r.checks.where((c) => c.passed == false).isEmpty ? 'checks OK' : 'checks FAILED'}'
+                  '\n${r.settingsSummary}',
+                ),
+                isThreeLine: true,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _open(r),
+              ),
+          ],
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: FilledButton.icon(
+            onPressed: _s.actions.isEmpty && _s.challenge == ChallengeMode.off
+                ? null
+                : _start,
             icon: const Icon(Icons.face),
             label: const Text('Start liveness check'),
           ),
-          if (_lastResult != null) ...[
-            const Divider(height: 32),
-            ResultCard(result: _lastResult!),
-          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _sections(BuildContext context) {
+    final s = _s;
+    void set(VoidCallback f) => setState(f);
+
+    return [
+      _Group(
+        title: 'Actions',
+        initiallyExpanded: true,
+        children: [
+          Wrap(spacing: 6, runSpacing: 4, children: [
+            for (final action in LivenessAction.values)
+              FilterChip(
+                label: Text(action.name),
+                selected: s.actions.contains(action),
+                onSelected: (on) => set(() {
+                  on ? s.actions.add(action) : s.actions.remove(action);
+                  if (s.randomCount > s.actions.length) {
+                    s.randomCount = s.actions.length;
+                  }
+                }),
+              ),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            s.actions.isEmpty
+                ? 'Select at least one action'
+                : s.actions.map((a) => a.name).join(' · '),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (s.actions.isNotEmpty && !s.hasMotionAction)
+            const _Warning(
+              'No motion action (blink, nod, openMouth, drawCircleWithNose): '
+              'pose-only actions can be faked with a photo.',
+            ),
+          SwitchListTile(
+            title: const Text('Shuffle order'),
+            value: s.shuffle,
+            onChanged: (v) => set(() => s.shuffle = v),
+          ),
+          _Dropdown<int>(
+            label: 'Random pick per session (randomActionCount)',
+            value: s.randomCount,
+            items: {
+              0: 'Off (use all)',
+              for (var n = 1; n <= s.actions.length; n++) n: '$n of ${s.actions.length}',
+            },
+            onChanged: (v) => set(() => s.randomCount = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Timing',
+        children: [
+          _Slider(
+            label: 'Action timeout',
+            value: s.actionTimeoutS,
+            min: 3,
+            max: 60,
+            unit: 's',
+            onChanged: (v) => set(() => s.actionTimeoutS = v),
+          ),
+          _Dropdown<int>(
+            label: 'Session timeout',
+            value: s.sessionTimeoutS,
+            items: const {0: 'Off', 20: '20 s', 60: '1 min', 120: '2 min', 300: '5 min'},
+            onChanged: (v) => set(() => s.sessionTimeoutS = v),
+          ),
+          _Slider(
+            label: 'Neutral-face timeout',
+            value: s.neutralTimeoutS,
+            min: 2,
+            max: 30,
+            unit: 's',
+            onChanged: (v) => set(() => s.neutralTimeoutS = v),
+          ),
+          SwitchListTile(
+            title: const Text('Require neutral face between actions'),
+            value: s.requireNeutral,
+            onChanged: (v) => set(() => s.requireNeutral = v),
+          ),
+          SwitchListTile(
+            title: const Text('Fast blink sampling (~20 fps)'),
+            subtitle: const Text('mlIntervalBlink 50 ms instead of 100 ms'),
+            value: s.fastBlinkSampling,
+            onChanged: (v) => set(() => s.fastBlinkSampling = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Capture',
+        children: [
+          for (final (type, label, hint) in const [
+            (CaptureType.images, 'Photos', 'Reference + one per action'),
+            (CaptureType.frameSequence, 'Frame sequence',
+                'Steady JPEGs, works on every device'),
+            (CaptureType.video, 'Video',
+                'Reliable on iOS; device-dependent on Android'),
+          ])
+            CheckboxListTile(
+              title: Text(label),
+              subtitle: Text(hint),
+              value: s.capture.contains(type),
+              onChanged: (v) =>
+                  set(() => v! ? s.capture.add(type) : s.capture.remove(type)),
+            ),
+          SwitchListTile(
+            title: const Text('Photo at the action\'s peak'),
+            subtitle: const Text('Eyes shut for blink, lowest point of nod'),
+            value: s.captureAtPeak,
+            onChanged: (v) => set(() => s.captureAtPeak = v),
+          ),
+          _Dropdown<ResolutionPreset>(
+            label: 'Camera resolution',
+            value: s.resolution,
+            items: {for (final r in ResolutionPreset.values) r: r.name},
+            onChanged: (v) => set(() => s.resolution = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Security & anti-spoof',
+        children: [
+          _Dropdown<ChallengeMode>(
+            label: 'Server challenge (fake server)',
+            value: s.challenge,
+            items: {for (final m in ChallengeMode.values) m: m.label},
+            onChanged: (v) => set(() => s.challenge = v),
+          ),
+          SwitchListTile(
+            title: const Text('Attestation (demo attestor)'),
+            subtitle: const Text('Signs the payload; checked on the result page'),
+            value: s.attestor,
+            onChanged: (v) => set(() => s.attestor = v),
+          ),
+          _Dropdown<PadMode>(
+            label: 'Anti-spoof model (demo analyzer)',
+            value: s.pad,
+            items: {for (final m in PadMode.values) m: m.label},
+            onChanged: (v) => set(() => s.pad = v),
+          ),
+          SwitchListTile(
+            title: const Text('Colour-flash challenge'),
+            subtitle: const Text('Best indoors; lowers confidence if failed'),
+            value: s.flashChallenge,
+            onChanged: (v) => set(() => s.flashChallenge = v),
+          ),
+          if (s.flashChallenge)
+            _Dropdown<int>(
+              label: 'Flash colours allowed to fail',
+              value: s.flashAllowedMisses,
+              items: const {0: '0 (strict)', 1: '1', 2: '2'},
+              onChanged: (v) => set(() => s.flashAllowedMisses = v),
+            ),
+          SwitchListTile(
+            title: const Text('Static-feed guard'),
+            subtitle: const Text('Fails on frozen / injected camera feeds'),
+            value: s.replayGuard,
+            onChanged: (v) => set(() => s.replayGuard = v),
+          ),
+          SwitchListTile(
+            title: const Text('Fail when the face changes'),
+            subtitle: const Text('failOnFaceChange (off: lowers confidence)'),
+            value: s.failOnFaceChange,
+            onChanged: (v) => set(() => s.failOnFaceChange = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Camera & detection',
+        children: [
+          SwitchListTile(
+            title: const Text('Assisted mode (back camera + torch)'),
+            subtitle: const Text('An operator films someone else and reads '
+                'the instructions out loud. Flash is skipped.'),
+            value: s.assisted,
+            onChanged: (v) => set(() => s.assisted = v),
+          ),
+          SwitchListTile(
+            title: const Text('mirrorYaw'),
+            subtitle: const Text('Turn off if left/right are swapped'),
+            value: s.mirrorYaw,
+            onChanged: (v) => set(() => s.mirrorYaw = v),
+          ),
+          SwitchListTile(
+            title: const Text('invertPitch'),
+            subtitle: const Text('Turn on if up/down or nod are inverted'),
+            value: s.invertPitch,
+            onChanged: (v) => set(() => s.invertPitch = v),
+          ),
+          SwitchListTile(
+            title: const Text('Debug overlay'),
+            subtitle: const Text('Live angles, probabilities, light, and a '
+                'green box where the detector sees your face'),
+            value: s.debugOverlay,
+            onChanged: (v) => set(() => s.debugOverlay = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Look & feel',
+        children: [
+          _Dropdown<TargetShape>(
+            label: 'Target shape (also the detection zone)',
+            value: s.ovalShape,
+            items: {for (final t in TargetShape.values) t: t.name},
+            onChanged: (v) => set(() => s.ovalShape = v),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Target size: ${s.ovalSize.toStringAsFixed(2)}'),
+            subtitle: Slider(
+              value: s.ovalSize,
+              min: 0.4,
+              max: 0.95,
+              onChanged: (v) => set(() => s.ovalSize = v),
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Custom UI'),
+            subtitle: const Text('overlayBuilder + instructionBuilder, with '
+                'targetRegion so the window drives detection'),
+            value: s.customUi,
+            onChanged: (v) => set(() => s.customUi = v),
+          ),
+          SwitchListTile(
+            title: const Text('Light theme'),
+            subtitle: const Text('Light scrim, dark text and close icon'),
+            value: s.lightTheme,
+            onChanged: (v) => set(() => s.lightTheme = v),
+          ),
+          SwitchListTile(
+            title: const Text('French (partial)'),
+            subtitle: const Text('Untranslated entries fall back to English'),
+            value: s.french,
+            onChanged: (v) => set(() => s.french = v),
+          ),
+          SwitchListTile(
+            title: const Text('Haptics'),
+            value: s.haptics,
+            onChanged: (v) => set(() => s.haptics = v),
+          ),
+          SwitchListTile(
+            title: const Text('On-screen event log'),
+            value: s.showEventLog,
+            onChanged: (v) => set(() => s.showEventLog = v),
+          ),
+          SwitchListTile(
+            title: const Text('External controls (LivenessController)'),
+            subtitle: const Text('Hide the close button; cancel / restart and '
+                'live state from a bar of our own'),
+            value: s.externalControls,
+            onChanged: (v) => set(() => s.externalControls = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Permissions',
+        children: [
+          SwitchListTile(
+            title: const Text('Ask for camera permission first'),
+            subtitle: const Text('Off: let the package report '
+                'permissionDenied itself'),
+            value: s.requestPermissionFirst,
+            onChanged: (v) => set(() => s.requestPermissionFirst = v),
+          ),
+          SwitchListTile(
+            title: const Text('In-screen "permission denied" page'),
+            subtitle: const Text('permissionDeniedBuilder with Settings + '
+                'Try again'),
+            value: s.permissionScreen,
+            onChanged: (v) => set(() => s.permissionScreen = v),
+          ),
+        ],
+      ),
+      _Group(
+        title: 'Upload',
+        children: [
+          TextField(
+            controller: _endpoint,
+            decoration: const InputDecoration(
+              labelText: 'Endpoint (optional)',
+              hintText: 'https://webhook.site/…',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          _Dropdown<int>(
+            label: 'Retries on network error / 5xx',
+            value: s.uploadRetries,
+            items: const {0: '0', 1: '1', 2: '2', 3: '3'},
+            onChanged: (v) => set(() => s.uploadRetries = v),
+          ),
+        ],
+      ),
+    ];
+  }
+}
+
+/// Short checklist of things worth trying on a device.
+class _HowToTest extends StatelessWidget {
+  const _HowToTest({required this.onBrokenConfig});
+
+  final VoidCallback onBrokenConfig;
+
+  @override
+  Widget build(BuildContext context) {
+    const tips = [
+      'Press system back mid-session: a "cancelled (dispose)" result still '
+          'arrives.',
+      'Cover the camera or leave the frame: the session ends by itself '
+          '(faceLost / sessionTimeout), it never hangs.',
+      'Hold a head turn after lookLeft: fails after the neutral timeout.',
+      'Have someone walk past in the background: small or brief faces are '
+          'ignored.',
+      'Blink quickly: fast blinks should register.',
+      'Debug overlay on: the green box should sit on your face, and '
+          '"in position" should match the oval (try other shapes/sizes).',
+      'iPhone: nod and look up/down. If inverted, turn on invertPitch.',
+      'KYC preset: the result page shows the simulated server checks.',
+      'Deny camera access in Settings: you get permissionDenied, not a '
+          'generic error.',
+    ];
+    return Card(
+      child: ExpansionTile(
+        title: const Text('What to test'),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final t in tips)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('• $t'),
+            ),
+          TextButton(
+            onPressed: onBrokenConfig,
+            child: const Text('Start with an invalid config (empty actions)'),
+          ),
         ],
       ),
     );
   }
 }
 
-class LivenessScreen extends StatelessWidget {
-  const LivenessScreen({
-    super.key,
-    required this.actions,
-    required this.shuffle,
-    required this.capture,
-    required this.customUi,
-    required this.debugOverlay,
-    required this.flashChallenge,
-    required this.assisted,
-    required this.endpoint,
+class _Group extends StatelessWidget {
+  const _Group({
+    required this.title,
+    required this.children,
+    this.initiallyExpanded = false,
   });
 
-  final List<LivenessAction> actions;
-  final bool shuffle;
-  final Set<CaptureType> capture;
-  final bool customUi;
-  final bool debugOverlay;
-  final bool flashChallenge;
-  final bool assisted;
-  final String endpoint;
+  final String title;
+  final List<Widget> children;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: LivenessDetector(
-        config: LivenessConfig(
-          actions: actions,
-          shuffleActions: shuffle,
-          capture: capture,
-          enableFlashChallenge: flashChallenge,
-          cameraMode: assisted
-              ? LivenessCameraMode.assisted
-              : LivenessCameraMode.selfService,
-        ),
-        theme: const LivenessTheme(
-          progressColor: Colors.tealAccent,
-          ovalBorderColorActive: Colors.tealAccent,
-        ),
-        // When "Custom UI" is on, replace both the overlay and the
-        // instruction area with our own widgets (see below).
-        overlayBuilder: customUi ? _customOverlay : null,
-        instructionBuilder: customUi ? _customInstructions : null,
-        showDebugOverlay: debugOverlay,
-        onActionCompleted: (action, index) =>
-            debugPrint('Completed: ${action.name} ($index)'),
-        onError: (e, st) => debugPrint('Liveness error: $e'),
-        onResult: (result) async {
-          // Full readable summary in the console on every session end.
-          debugPrint(result.toString());
+    return ExpansionTile(
+      title: Text(title),
+      initiallyExpanded: initiallyExpanded,
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+}
 
-          if (endpoint.isNotEmpty && result.success && context.mounted) {
-            // Uploading happens in YOUR code, so the loading UI is fully
-            // yours. Here: a dialog with a progress bar driven by
-            // HttpLivenessUploader.onProgress. Any transport works —
-            // LivenessUploader.custom((r) async { ... }) wraps dio, S3, etc.
-            await _uploadWithProgress(context, result, endpoint);
-          }
-          if (context.mounted) Navigator.pop(context, result);
+class _Warning extends StatelessWidget {
+  const _Warning(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber, color: Colors.orange, size: 18),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodySmall),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Dropdown<T> extends StatelessWidget {
+  const _Dropdown({
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final String label;
+  final T value;
+  final Map<T, String> items;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(label),
+      trailing: DropdownButton<T>(
+        value: items.containsKey(value) ? value : items.keys.first,
+        items: [
+          for (final e in items.entries)
+            DropdownMenuItem(value: e.key, child: Text(e.value)),
+        ],
+        onChanged: (v) {
+          if (v != null) onChanged(v);
         },
       ),
     );
   }
 }
 
-/// Uploads with a non-dismissible progress dialog. The progress bar is
-/// driven by [HttpLivenessUploader.onProgress] via a [ValueNotifier].
-Future<void> _uploadWithProgress(
-  BuildContext context,
-  LivenessResult result,
-  String endpoint,
-) async {
-  final progress = ValueNotifier<double>(0);
+class _Slider extends StatelessWidget {
+  const _Slider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.unit,
+    required this.onChanged,
+  });
 
-  // Show the dialog; don't await it — the upload below controls when it
-  // closes.
-  showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => Dialog(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Uploading results…'),
-            const SizedBox(height: 16),
-            ValueListenableBuilder<double>(
-              valueListenable: progress,
-              builder: (_, value, __) => Column(
-                children: [
-                  LinearProgressIndicator(value: value == 0 ? null : value),
-                  const SizedBox(height: 8),
-                  Text('${(value * 100).toStringAsFixed(0)}%'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-
-  try {
-    await HttpLivenessUploader(
-      endpoint: Uri.parse(endpoint),
-      onProgress: (sent, total) =>
-          progress.value = total > 0 ? sent / total : 0,
-      onResponse: (response) async =>
-          debugPrint('Upload status: ${response.statusCode}'),
-    ).upload(result);
-  } catch (e) {
-    debugPrint('Upload failed: $e');
-  } finally {
-    if (context.mounted) {
-      Navigator.of(context, rootNavigator: true).pop(); // close the dialog
-    }
-    progress.dispose();
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Custom UI demo: everything below shows how to fully restyle the liveness
-// screen with overlayBuilder + instructionBuilder.
-// ---------------------------------------------------------------------------
-
-Widget _customOverlay(BuildContext context, LivenessSessionState state) {
-  final borderColor = switch (state.phase) {
-    LivenessPhase.completed => Colors.greenAccent,
-    LivenessPhase.failed => Colors.redAccent,
-    _ => state.faceInPosition ? Colors.tealAccent : Colors.white38,
-  };
-
-  return Stack(fit: StackFit.expand, children: [
-    CustomPaint(painter: _WindowPainter(borderColor: borderColor)),
-    // Whole-session progress bar at the top.
-    Align(
-      alignment: const Alignment(0, -0.85),
-      child: SizedBox(
-        width: 220,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: LinearProgressIndicator(
-            value: state.overallProgress,
-            minHeight: 6,
-            backgroundColor: Colors.white24,
-            color: Colors.tealAccent,
-          ),
-        ),
-      ),
-    ),
-  ]);
-}
-
-Widget _customInstructions(BuildContext context, LivenessSessionState state) {
-  final text = switch (state.phase) {
-    LivenessPhase.initializing => 'Warming up…',
-    LivenessPhase.searchingFace => 'Show us your face 👀',
-    LivenessPhase.centeringFace => 'A bit closer…',
-    LivenessPhase.awaitingNeutral => 'Relax your face',
-    LivenessPhase.performingAction => switch (state.currentAction!) {
-        LivenessAction.blink => 'Blink! 😉',
-        LivenessAction.smile => 'Smile! 😊',
-        LivenessAction.fullTeethSmile => 'Big smile — show those teeth! 😁',
-        LivenessAction.nod => 'Nod your head 🙂↕️',
-        LivenessAction.lookLeft => 'Look left ⬅️',
-        LivenessAction.lookRight => 'Look right ➡️',
-        LivenessAction.lookUp => 'Look up ⬆️',
-        LivenessAction.lookDown => 'Look down ⬇️',
-        LivenessAction.tiltLeft => 'Tilt to your left shoulder ↖️',
-        LivenessAction.tiltRight => 'Tilt to your right shoulder ↗️',
-        LivenessAction.eyesClosed => 'Close your eyes and hold 😌',
-        LivenessAction.openMouth => 'Open wide 😮',
-        LivenessAction.drawCircleWithNose => 'Draw a circle with your nose ⭕',
-      },
-    LivenessPhase.completed => 'You\'re verified ✅',
-    LivenessPhase.failed => 'Let\'s try that again',
-  };
-
-  return Column(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.black54,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          style: const TextStyle(color: Colors.white, fontSize: 18),
-        ),
-      ),
-      const SizedBox(height: 12),
-      // Step dots: green = done, white = current, faint = upcoming.
-      Row(
-        mainAxisSize: MainAxisSize.min,
-        children: List.generate(state.totalActions, (i) {
-          final done = i < state.completedActions.length;
-          final current = i == state.currentActionIndex &&
-              state.phase == LivenessPhase.performingAction;
-          return Container(
-            width: 10,
-            height: 10,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: done
-                  ? Colors.greenAccent
-                  : current
-                      ? Colors.white
-                      : Colors.white24,
-            ),
-          );
-        }),
-      ),
-      if (state.remaining != null &&
-          state.phase == LivenessPhase.performingAction)
-        Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Text('${state.remaining!.inSeconds}s',
-              style: const TextStyle(color: Colors.white70)),
-        ),
-    ],
-  );
-}
-
-/// Dimmed background with a rounded-rectangle window instead of the
-/// default oval.
-class _WindowPainter extends CustomPainter {
-  _WindowPainter({required this.borderColor});
-
-  final Color borderColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final window = RRect.fromRectAndRadius(
-      Rect.fromCenter(
-        center: Offset(size.width / 2, size.height * 0.42),
-        width: size.width * 0.75,
-        height: size.width * 0.95,
-      ),
-      const Radius.circular(32),
-    );
-    final scrim = Path()
-      ..addRect(Offset.zero & size)
-      ..addRRect(window)
-      ..fillType = PathFillType.evenOdd;
-    canvas.drawPath(scrim, Paint()..color = Colors.black.withValues(alpha: 0.75));
-    canvas.drawRRect(
-      window,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = borderColor,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_WindowPainter old) => old.borderColor != borderColor;
-}
-
-class ImagePreviewPage extends StatelessWidget {
-  const ImagePreviewPage({super.key, required this.image, required this.label});
-
-  final CapturedImage image;
   final String label;
+  final int value;
+  final int min;
+  final int max;
+  final String unit;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text(label),
-      ),
-      body: Center(
-        child: InteractiveViewer(child: Image.memory(image.bytes)),
-      ),
-    );
-  }
-}
-
-class VideoPreviewPage extends StatefulWidget {
-  const VideoPreviewPage({super.key, required this.path});
-
-  final String path;
-
-  @override
-  State<VideoPreviewPage> createState() => _VideoPreviewPageState();
-}
-
-class _VideoPreviewPageState extends State<VideoPreviewPage> {
-  late final VideoPlayerController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.file(File(widget.path))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {});
-          _controller.play();
-          _controller.setLooping(true);
-        }
-      });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('Session video'),
-      ),
-      body: Center(
-        child: _controller.value.isInitialized
-            ? AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: VideoPlayer(_controller),
-              )
-            : const CircularProgressIndicator(),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(() {
-          _controller.value.isPlaying
-              ? _controller.pause()
-              : _controller.play();
-        }),
-        child: Icon(
-          _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-        ),
-      ),
-    );
-  }
-}
-
-/// Plays a captured frame sequence back at its real timing.
-class FrameSequencePage extends StatefulWidget {
-  const FrameSequencePage({super.key, required this.frames});
-
-  final List<CapturedImage> frames;
-
-  @override
-  State<FrameSequencePage> createState() => _FrameSequencePageState();
-}
-
-class _FrameSequencePageState extends State<FrameSequencePage> {
-  int _index = 0;
-  bool _playing = true;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleNext();
-  }
-
-  void _scheduleNext() {
-    if (!_playing || widget.frames.length < 2) return;
-    final next = (_index + 1) % widget.frames.length;
-    // Real inter-frame delay; loop restart uses the median-ish default.
-    final delayMs = next == 0
-        ? 500
-        : (widget.frames[next].timestampMs - widget.frames[_index].timestampMs)
-            .clamp(50, 1000);
-    _timer = Timer(Duration(milliseconds: delayMs), () {
-      if (!mounted) return;
-      setState(() => _index = next);
-      _scheduleNext();
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final frame = widget.frames[_index];
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: Text('Frame ${_index + 1}/${widget.frames.length} '
-            '· ${frame.timestampMs} ms'),
-      ),
-      body: Center(child: Image.memory(frame.bytes, gaplessPlayback: true)),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(() {
-          _playing = !_playing;
-          _timer?.cancel();
-          if (_playing) _scheduleNext();
-        }),
-        child: Icon(_playing ? Icons.pause : Icons.play_arrow),
-      ),
-    );
-  }
-}
-
-class ResultCard extends StatelessWidget {
-  const ResultCard({super.key, required this.result});
-
-  final LivenessResult result;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  result.success ? Icons.verified : Icons.error,
-                  color: result.success ? Colors.green : Colors.red,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  result.success
-                      ? 'Liveness passed'
-                      : 'Failed: ${result.failureReason?.name}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text('Completed: '
-                '${result.completedActions.map((a) => a.name).join(', ')}'),
-            Text('Duration: ${result.duration.inMilliseconds} ms'),
-            Text('Confidence: '
-                '${(result.confidenceScore * 100).toStringAsFixed(0)}%'),
-            Text('Session: ${result.sessionId}',
-                style: Theme.of(context).textTheme.bodySmall),
-            Text('Images captured: ${result.images.length}'),
-            if (result.frameSequence.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.burst_mode),
-                label: Text(
-                    'Play frame sequence (${result.frameSequence.length})'),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        FrameSequencePage(frames: result.frameSequence),
-                  ),
-                ),
-              ),
-            ],
-            if (result.videoPath != null) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('Play session video'),
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => VideoPreviewPage(path: result.videoPath!),
-                  ),
-                ),
-              ),
-            ],
-            if (result.images.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 96,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: result.images.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final image = result.images[i];
-                    final label = image.action?.name ?? 'reference';
-                    return GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ImagePreviewPage(image: image, label: label),
-                        ),
-                      ),
-                      child: Column(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.memory(
-                              image.bytes,
-                              height: 72,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                          Text(
-                            label,
-                            style: Theme.of(context).textTheme.labelSmall,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ],
-        ),
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text('$label: $value $unit'),
+      subtitle: Slider(
+        value: value.toDouble(),
+        min: min.toDouble(),
+        max: max.toDouble(),
+        divisions: max - min,
+        onChanged: (v) => onChanged(v.round()),
       ),
     );
   }

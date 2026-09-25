@@ -159,6 +159,11 @@ Pre-1.0, so there are breaking changes; each is listed below.
   plus `flutter analyze` for the example, on pushes to `main` and on pull
   requests. Widget tests now drive `LivenessDetector` through a fake camera
   (225 tests in total).
+- The example app is now a test bench for every option: presets, grouped
+  settings, a live callback log, a `LivenessController` bar, an in-screen
+  permission page, and a result page that runs the server checks from
+  `doc/server_verification.md` against in-app fakes (challenge server,
+  attestor, anti-spoof analyzer).
 
 ### Fixed
 

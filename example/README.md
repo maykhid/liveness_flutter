@@ -3,6 +3,35 @@
 Runnable demo: pick actions, choose capture modes, run a liveness session,
 view captured images, and optionally upload to your API.
 
+## What's in it
+
+A test bench for every option in the package:
+
+- **Presets**: Quick test, Server-bound (KYC), Everything on, Accessible.
+- **Settings** grouped by area: actions (with `randomActionCount` and a
+  warning when there's no motion action), timeouts, capture, security
+  (server challenge, attestation, anti-spoof analyzer, colour flash,
+  static-feed guard, face-change failure), camera and detection
+  (`mirrorYaw`, `invertPitch`, debug overlay), look and feel (target
+  shape and size, custom UI with `targetRegion`, light theme, partial
+  French strings, haptics), permissions and upload.
+- **On the liveness screen**: a live event log of every callback, and
+  optionally a `LivenessController` bar (cancel, restart, plan, time left)
+  in place of the close button, plus an in-screen "camera access is off"
+  page.
+- **Result page**: outcome and reason, confidence, the **simulated server
+  checks** from `doc/server_verification.md` (nonce, action order, media
+  hashes, attestation), anti-spoof signals, photos labelled with their
+  kind and timestamp, frame-sequence and video playback, the event log,
+  the raw `toJson()`, and upload with progress and error reporting.
+- **What to test**: a checklist on the home screen, including a button
+  that starts a session with an invalid config.
+
+The "server", attestor and anti-spoof model are in-app fakes
+(`lib/src/demo_security.dart`) so everything works offline. **None of
+them is secure**: in a real app they live on your backend or come from
+Play Integrity / App Attest and a trained model.
+
 ## Run it
 
 If you cloned the repository, `android/` and `ios/` are already set up:
@@ -55,7 +84,8 @@ Use a **physical device** — simulators/emulators have no usable front camera.
 
 ## Testing the upload
 
-Point the endpoint field at any server that accepts multipart POSTs. Quick
+Set the endpoint on the home screen, run a session, and tap **Upload** on
+the result page. Any server that accepts multipart POSTs works. Quick
 local test:
 
 ```bash
