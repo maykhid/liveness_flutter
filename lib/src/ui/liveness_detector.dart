@@ -118,6 +118,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
   int _framesSeen = 0;
   bool _videoActive = false;
   Timer? _videoWatchdog;
+  Timer? _ticker;
   final Map<String, Object?> _extraMetadata = {};
   String? _videoPath;
 
@@ -236,6 +237,11 @@ class _LivenessDetectorState extends State<LivenessDetector>
       }
 
       _session.start();
+      // Timeouts must fire even if the camera stops delivering frames.
+      _ticker = Timer.periodic(
+        const Duration(milliseconds: 250),
+        (_) => _session.tick(_clock.elapsedMilliseconds),
+      );
       setState(() {});
     } catch (e, st) {
       widget.onError?.call(e, st);
@@ -492,6 +498,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     _finished = true;
 
     _videoWatchdog?.cancel();
+    _ticker?.cancel();
     final controller = _cameraController;
     try {
       if (controller != null && controller.value.isInitialized) {
@@ -598,6 +605,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
     WidgetsBinding.instance.removeObserver(this);
     _finished = true;
     _videoWatchdog?.cancel();
+    _ticker?.cancel();
     _flashTint.dispose();
     if (widget.config.boostScreenBrightness) {
       // Restore the user's brightness (fire-and-forget).

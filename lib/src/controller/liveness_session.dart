@@ -72,6 +72,8 @@ class LivenessSession {
   ActionDetector? _detector;
   int _actionIndex = 0;
   int? _actionStartMs;
+  int? _sessionStartMs;
+  int? _neutralStartMs;
   int? _faceLostSinceMs;
   bool _referenceEmitted = false;
   final List<LivenessAction> _completed = [];
@@ -98,6 +100,45 @@ class LivenessSession {
     _fail(LivenessFailureReason.systemError);
   }
 
+  /// Advance timers without a frame. Call periodically (the widget does,
+  /// every 250 ms) so timeouts still fire when the camera stalls and no
+  /// frames arrive. [timestampMs] must use the same clock as [onFrame].
+  void tick(int timestampMs) {
+    if (isTerminal || current.phase == LivenessPhase.initializing) return;
+    _checkTimeouts(timestampMs);
+  }
+
+  /// Fails the session if any timeout has expired. Returns true if it did.
+  bool _checkTimeouts(int nowMs) {
+    final sessionStart = _sessionStartMs ??= nowMs;
+    final sessionTimeout = config.sessionTimeout;
+    if (sessionTimeout != null &&
+        nowMs - sessionStart > sessionTimeout.inMilliseconds) {
+      _fail(LivenessFailureReason.sessionTimeout);
+      return true;
+    }
+    switch (current.phase) {
+      case LivenessPhase.performingAction:
+        final start = _actionStartMs;
+        if (start != null &&
+            nowMs - start > config.actionTimeout.inMilliseconds) {
+          _fail(LivenessFailureReason.actionTimeout);
+          return true;
+        }
+      case LivenessPhase.awaitingNeutral:
+        final start = _neutralStartMs;
+        if (start != null &&
+            nowMs - start > config.neutralTimeout.inMilliseconds) {
+          _metadata['timeoutPhase'] = LivenessPhase.awaitingNeutral.name;
+          _fail(LivenessFailureReason.actionTimeout);
+          return true;
+        }
+      default:
+        break;
+    }
+    return false;
+  }
+
   /// Feed one frame's worth of detection output.
   ///
   /// [faces] — all faces detected this frame (normalized snapshots).
@@ -122,6 +163,8 @@ class LivenessSession {
       return;
     }
 
+    if (_checkTimeouts(timestampMs)) return;
+
     if (faces.length > 1 && config.failOnMultipleFaces) {
       _fail(LivenessFailureReason.multipleFaces);
       return;
@@ -130,8 +173,9 @@ class LivenessSession {
     final face = faces.isEmpty ? null : faces.first;
 
     // Unusable frame (dark/blurry): freeze in place. Doesn't accumulate
-    // toward face-lost — a dim room shouldn't fail the session, the user
-    // just needs to fix the light.
+    // toward face-lost — a dim room shouldn't fail the session straight
+    // away, the user just needs to fix the light. The action and session
+    // timeouts above still run.
     if (qualityHold) {
       _faceLostSinceMs = null;
       _detector?.reset();
@@ -215,10 +259,6 @@ class LivenessSession {
 
     final elapsed = timestampMs - startMs;
     final timeoutMs = config.actionTimeout.inMilliseconds;
-    if (elapsed > timeoutMs) {
-      _fail(LivenessFailureReason.actionTimeout);
-      return;
-    }
 
     final update = detector.update(face);
     if (update.completed) {
@@ -238,6 +278,7 @@ class LivenessSession {
         ));
         _emitEvent(const SessionCompletedEvent());
       } else {
+        _neutralStartMs = timestampMs;
         _emitState(current.copyWith(
           phase: LivenessPhase.awaitingNeutral,
           completedActions: List.of(_completed),

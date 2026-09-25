@@ -1,3 +1,29 @@
+# 0.5.0 (unreleased)
+
+### Breaking
+
+- New `LivenessFailureReason.sessionTimeout`. Exhaustive `switch`es over
+  `LivenessFailureReason` need a new case.
+- Sessions now end on their own: by default after 2 minutes overall
+  (`sessionTimeout`) and after 10 s of not returning to a neutral face
+  (`neutralTimeout`). Pass `sessionTimeout: null` for the old unbounded
+  behaviour.
+
+### Added
+
+- `LivenessConfig.sessionTimeout` (default 2 min, nullable) and
+  `LivenessConfig.neutralTimeout` (default 10 s).
+- `LivenessSession.tick(timestampMs)`: advances timers without a frame.
+  The widget calls it every 250 ms.
+
+### Fixed
+
+- Sessions could hang forever while searching for or centering the face,
+  while waiting for a neutral face, or while paused for bad lighting. The
+  neutral case fails with `actionTimeout` and
+  `metadata['timeoutPhase'] = 'awaitingNeutral'`. The action timer now keeps
+  running during a quality pause.
+
 # 0.4.4
 
 - Updated README.md

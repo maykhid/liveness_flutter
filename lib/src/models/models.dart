@@ -96,8 +96,14 @@ enum FaceGuidance {
 
 /// Why a session failed.
 enum LivenessFailureReason {
-  /// The current action was not completed within its timeout.
+  /// The current action was not completed within
+  /// [LivenessConfig.actionTimeout], or the user did not return to a neutral
+  /// face within [LivenessConfig.neutralTimeout]
+  /// (`metadata['timeoutPhase'] == 'awaitingNeutral'`).
   actionTimeout,
+
+  /// The whole session exceeded [LivenessConfig.sessionTimeout].
+  sessionTimeout,
 
   /// More than one face appeared in frame.
   multipleFaces,
@@ -376,6 +382,8 @@ class LivenessConfig {
     this.shuffleActions = false,
     this.capture = const {},
     this.actionTimeout = const Duration(seconds: 15),
+    this.sessionTimeout = const Duration(minutes: 2),
+    this.neutralTimeout = const Duration(seconds: 10),
     this.faceLostGrace = const Duration(milliseconds: 800),
     this.requireNeutralBetweenActions = true,
     this.failOnMultipleFaces = true,
@@ -420,8 +428,21 @@ class LivenessConfig {
   /// initialized, so it cannot change mid-session.
   final Set<CaptureType> capture;
 
-  /// Per-action timeout before the session fails.
+  /// Per-action timeout before the session fails. Keeps running while the
+  /// session is paused for bad lighting or blur.
   final Duration actionTimeout;
+
+  /// Upper bound for the whole session, measured from the first frame.
+  /// Covers phases with no per-action timer (searching for or centering the
+  /// face). Fails with [LivenessFailureReason.sessionTimeout]. `null`
+  /// disables it.
+  final Duration? sessionTimeout;
+
+  /// How long the user may take to return to a neutral face between
+  /// actions (when [requireNeutralBetweenActions] is true). Fails with
+  /// [LivenessFailureReason.actionTimeout] and
+  /// `metadata['timeoutPhase'] = 'awaitingNeutral'`.
+  final Duration neutralTimeout;
 
   /// How long the face may leave the frame before failing.
   final Duration faceLostGrace;
