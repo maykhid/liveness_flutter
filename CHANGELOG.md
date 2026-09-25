@@ -65,6 +65,9 @@
   from outside the widget. `restart()` starts a fresh session (new session
   ID, new shuffle, new camera) and still delivers exactly one result per
   session (`cancelledBy: 'restart'` for an interrupted one).
+- `LivenessSessionState.actionPlan` (the executed order, from the first
+  state), `actionTimeout` and `sessionRemaining`. `tick()` keeps `remaining`
+  and `sessionRemaining` counting down when frames stall.
 
 ### Fixed
 

@@ -663,6 +663,9 @@ class LivenessSessionState {
     this.faceInPosition = false,
     this.remaining,
     this.guidance = FaceGuidance.none,
+    this.actionPlan = const [],
+    this.actionTimeout = const Duration(seconds: 15),
+    this.sessionRemaining,
   });
 
   final LivenessPhase phase;
@@ -687,6 +690,20 @@ class LivenessSessionState {
   /// hints from this ("move closer", "too dark", …).
   final FaceGuidance guidance;
 
+  /// Every action of this session, in the order it runs them (after any
+  /// shuffle). Set from the very first state, so custom UIs can draw the
+  /// whole plan up front.
+  final List<LivenessAction> actionPlan;
+
+  /// The per-action limit ([LivenessConfig.actionTimeout]), e.g. to draw a
+  /// countdown ring from [remaining].
+  final Duration actionTimeout;
+
+  /// Time left before [LivenessConfig.sessionTimeout] fails the session;
+  /// null when that limit is disabled or the clock hasn't started (first
+  /// frame).
+  final Duration? sessionRemaining;
+
   /// Overall progress including completed actions.
   double get overallProgress => totalActions == 0
       ? 0
@@ -707,9 +724,13 @@ class LivenessSessionState {
     bool? faceInPosition,
     Duration? remaining,
     FaceGuidance? guidance,
+    List<LivenessAction>? actionPlan,
+    Duration? actionTimeout,
+    Duration? sessionRemaining,
     bool clearCurrentAction = false,
     bool clearFailureReason = false,
     bool clearRemaining = false,
+    bool clearSessionRemaining = false,
   }) {
     return LivenessSessionState(
       phase: phase ?? this.phase,
@@ -724,6 +745,11 @@ class LivenessSessionState {
       faceInPosition: faceInPosition ?? this.faceInPosition,
       remaining: clearRemaining ? null : remaining ?? this.remaining,
       guidance: guidance ?? this.guidance,
+      actionPlan: actionPlan ?? this.actionPlan,
+      actionTimeout: actionTimeout ?? this.actionTimeout,
+      sessionRemaining: clearSessionRemaining
+          ? null
+          : sessionRemaining ?? this.sessionRemaining,
     );
   }
 }

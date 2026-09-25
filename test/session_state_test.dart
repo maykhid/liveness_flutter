@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -69,6 +70,89 @@ void main() {
       session.cancel();
       expect(session.current.phase, LivenessPhase.failed);
       expect(session.current.remaining, isNull);
+    });
+  });
+
+  group('C2 builder information', () {
+    test('actionPlan equals actionOrder from the first state onward', () {
+      final session = LivenessSession(
+        const LivenessConfig(
+          actions: [
+            LivenessAction.smile,
+            LivenessAction.blink,
+            LivenessAction.nod,
+            LivenessAction.lookLeft,
+          ],
+          shuffleActions: true,
+        ),
+        random: Random(7),
+      );
+      final seen = <LivenessSessionState>[session.current];
+      session.state.addListener(() => seen.add(session.current));
+      session.start();
+      session.onFrame(faces: [f(0)], faceInPosition: true, timestampMs: 0);
+      session.cancel();
+
+      expect(seen.length, greaterThan(2));
+      for (final state in seen) {
+        expect(state.actionPlan, session.actionOrder);
+        expect(state.totalActions, 4);
+      }
+    });
+
+    test('actionTimeout mirrors the config', () {
+      final session = LivenessSession(const LivenessConfig(
+        actions: [LivenessAction.smile],
+        actionTimeout: Duration(seconds: 9),
+      ));
+      expect(session.current.actionTimeout, const Duration(seconds: 9));
+    });
+
+    test('sessionRemaining counts down from sessionTimeout', () {
+      final session = LivenessSession(const LivenessConfig(
+        actions: [LivenessAction.smile],
+        sessionTimeout: Duration(seconds: 60),
+      ))
+        ..start();
+      expect(session.current.sessionRemaining, isNull);
+      session.onFrame(faces: const [], faceInPosition: false, timestampMs: 1000);
+      expect(session.current.sessionRemaining, const Duration(seconds: 60));
+      session.tick(11000);
+      expect(session.current.sessionRemaining, const Duration(seconds: 50));
+    });
+
+    test('sessionRemaining stays null when sessionTimeout is null', () {
+      final session = LivenessSession(const LivenessConfig(
+        actions: [LivenessAction.smile],
+        sessionTimeout: null,
+      ))
+        ..start();
+      session.onFrame(faces: const [], faceInPosition: false, timestampMs: 0);
+      session.tick(5000);
+      expect(session.current.sessionRemaining, isNull);
+    });
+
+    test('tick() keeps the action countdown moving without frames', () {
+      final session = LivenessSession(const LivenessConfig(
+        actions: [LivenessAction.smile],
+        actionTimeout: Duration(seconds: 10),
+      ))
+        ..start();
+      session.onFrame(faces: [f(0)], faceInPosition: true, timestampMs: 0);
+      session.tick(4000);
+      expect(session.current.remaining, const Duration(seconds: 6));
+    });
+
+    test('a failed state carries its failureReason', () {
+      final session = LivenessSession(const LivenessConfig(
+        actions: [LivenessAction.smile],
+        actionTimeout: Duration(seconds: 1),
+      ))
+        ..start();
+      session.onFrame(faces: [f(0)], faceInPosition: true, timestampMs: 0);
+      session.tick(1500);
+      expect(session.current.phase, LivenessPhase.failed);
+      expect(session.current.failureReason, LivenessFailureReason.actionTimeout);
     });
   });
 }

@@ -217,8 +217,11 @@ final uploader = LivenessUploader.custom((result) async {
   live session state and rebuild on every change. Useful fields:
   `state.phase`, `state.currentAction`, `state.completedActions`,
   `state.actionProgress` (current action, 0–1), `state.overallProgress`
-  (whole session), `state.faceInPosition`, `state.remaining` (time left),
-  `state.guidance` (what's wrong right now: too far, too dark…).
+  (whole session), `state.faceInPosition`, `state.remaining` (time left
+  for the current action, out of `state.actionTimeout`),
+  `state.sessionRemaining` (time left overall), `state.actionPlan` (every
+  action in this session's order, from the first frame), `state.guidance`
+  (what's wrong right now: too far, too dark…) and `state.failureReason`.
 - `DetectorTuning` — how strict each action is (how big a smile counts,
   how far to turn, how long to hold…). Tested defaults, all adjustable.
 

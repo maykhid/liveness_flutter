@@ -60,14 +60,16 @@ class LivenessSession {
   LivenessSession(this.config, {Random? random})
       : _actions = config.shuffleActions
             ? (List.of(config.actions)..shuffle(random ?? Random.secure()))
-            : List.of(config.actions),
-        _state = ValueNotifier(
-          LivenessSessionState(
-            phase: LivenessPhase.initializing,
-            totalActions: config.actions.length,
-          ),
-        ) {
+            : List.of(config.actions) {
     config.validate();
+    _state = ValueNotifier(
+      LivenessSessionState(
+        phase: LivenessPhase.initializing,
+        totalActions: _actions.length,
+        actionPlan: actionOrder,
+        actionTimeout: config.actionTimeout,
+      ),
+    );
   }
 
   final LivenessConfig config;
@@ -77,7 +79,7 @@ class LivenessSession {
   final List<LivenessAction> _actions;
   List<LivenessAction> get actionOrder => List.unmodifiable(_actions);
 
-  final ValueNotifier<LivenessSessionState> _state;
+  late final ValueNotifier<LivenessSessionState> _state;
   ValueListenable<LivenessSessionState> get state => _state;
   LivenessSessionState get current => _state.value;
 
@@ -89,6 +91,7 @@ class LivenessSession {
   int _actionIndex = 0;
   int? _actionStartMs;
   int? _sessionStartMs;
+  int? _lastSeenMs;
   int? _neutralStartMs;
   int? _faceLostSinceMs;
   int? _multipleFacesSinceMs;
@@ -142,12 +145,24 @@ class LivenessSession {
   /// frames arrive. [timestampMs] must use the same clock as [onFrame].
   void tick(int timestampMs) {
     if (isTerminal || current.phase == LivenessPhase.initializing) return;
-    _checkTimeouts(timestampMs);
+    if (_checkTimeouts(timestampMs)) return;
+    // Keep the countdowns moving even when frames stall.
+    final start = _actionStartMs;
+    _emitState(current.copyWith(
+      remaining: current.phase == LivenessPhase.performingAction &&
+              start != null
+          ? Duration(
+              milliseconds: config.actionTimeout.inMilliseconds -
+                  (timestampMs - start),
+            )
+          : null,
+    ));
   }
 
   /// Fails the session if any timeout has expired. Returns true if it did.
   bool _checkTimeouts(int nowMs) {
     final sessionStart = _sessionStartMs ??= nowMs;
+    _lastSeenMs = nowMs;
     final sessionTimeout = config.sessionTimeout;
     if (sessionTimeout != null &&
         nowMs - sessionStart > sessionTimeout.inMilliseconds) {
@@ -380,6 +395,15 @@ class LivenessSession {
     // `remaining` is the action countdown; it is meaningless elsewhere.
     if (next.phase != LivenessPhase.performingAction && next.remaining != null) {
       next = next.copyWith(clearRemaining: true);
+    }
+    final timeout = config.sessionTimeout;
+    final start = _sessionStartMs;
+    final now = _lastSeenMs;
+    if (timeout != null && start != null && now != null) {
+      final left = timeout.inMilliseconds - (now - start);
+      next = next.copyWith(
+        sessionRemaining: Duration(milliseconds: left < 0 ? 0 : left),
+      );
     }
     _state.value = next;
   }
