@@ -17,8 +17,7 @@
   old completion-frame photos. Custom `LivenessEvent` switches need an
   `ActionPeakEvent` case.
 - New `FaceGuidance.tooBright` value. Exhaustive `switch`es over
-  `FaceGuidance` need a new case, and a custom `guidanceMessages` map needs
-  an entry for it (or see the map-merging change below).
+  `FaceGuidance` need a new case.
 - `onResult` can now run from `dispose()`, when the widget's context is
   unmounted. Code that navigates in `onResult` must check `context.mounted`
   first (the README example now does).
@@ -35,6 +34,10 @@
   oval" (it sits above a specific hint now), and `FaceGuidance.multipleFaces`
   was removed from the default `guidanceMessages` map in favour of
   `LivenessStrings.multipleFaces`.
+- `LivenessStrings.actionInstructions` / `guidanceMessages` are now getters
+  returning your entries merged over the defaults (the constructor
+  parameters are unchanged). The failed screen shows the reason-specific
+  text from `failureMessages` instead of `failed`.
 
 ### Added
 
@@ -85,6 +88,10 @@
   `LivenessTheme.closeIconColor`, `closeButtonAlignment`, `flashTintOpacity`
   and `resultHoldDuration`; `LivenessStrings.close` (close-button tooltip and
   screen-reader label).
+- `LivenessStrings.stepCounter` (`String Function(int current, int total)`),
+  `failureMessages` (per `LivenessFailureReason`, shown on the failed
+  screen), `failureFor()`, the `default*` maps, and `copyWith` on
+  `LivenessTheme` and `LivenessStrings`.
 
 ### Fixed
 
@@ -145,6 +152,11 @@
   it, and `multipleFaces` is the multiple-faces hint unless
   `guidanceMessages` has its own entry. The close icon was always white
   (invisible on light scrims).
+- "Step N of M" was hard-coded English; the failed screen always said
+  "Verification failed" whatever the reason; and a partial
+  `actionInstructions` or `guidanceMessages` map made every missing entry
+  fall back to raw enum names like `lookLeft`. User maps are now merged over
+  the defaults.
 
 # 0.4.4
 

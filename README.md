@@ -214,6 +214,11 @@ final uploader = LivenessUploader.custom((result) async {
   position and shape (oval, circle or rounded rectangle; this is also where
   the face must be), and **every piece of text** (so you can translate
   it).
+  Text maps (`actionInstructions`, `guidanceMessages`, `failureMessages`)
+  are merged over the English defaults, so you can override just a few
+  entries; `stepCounter: (current, total) => 'Étape $current sur $total'`
+  localises the step counter, and the failed screen says why the session
+  failed. Both `LivenessTheme` and `LivenessStrings` have `copyWith`.
 - `overlayBuilder` / `instructionBuilder` — swap out the dimmed overlay or
   the instruction area entirely with your own widgets. Both receive the
   live session state and rebuild on every change. Useful fields:

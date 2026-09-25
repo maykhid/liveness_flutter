@@ -162,7 +162,7 @@ class DefaultInstructionPanel extends StatelessWidget {
       case LivenessPhase.completed:
         return s.completed;
       case LivenessPhase.failed:
-        return s.failed;
+        return s.failureFor(state.failureReason);
     }
   }
 
@@ -195,7 +195,10 @@ class DefaultInstructionPanel extends StatelessWidget {
         const SizedBox(height: 8),
         if (state.phase == LivenessPhase.performingAction)
           Text(
-            'Step ${state.currentActionIndex + 1} of ${state.totalActions}',
+            theme.strings.stepCounter(
+              state.currentActionIndex + 1,
+              state.totalActions,
+            ),
             style: theme.counterStyle,
           ),
       ],
