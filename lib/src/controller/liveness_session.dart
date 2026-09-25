@@ -89,6 +89,10 @@ class LivenessSession {
   int? _neutralStartMs;
   int? _faceLostSinceMs;
   int? _multipleFacesSinceMs;
+
+  /// When the detector stopped being fed (face briefly lost, a second face,
+  /// or a bad-quality frame). Its state is kept; see [_resumeDetector].
+  int? _pausedSinceMs;
   bool _referenceEmitted = false;
   final List<LivenessAction> _completed = [];
   final Map<String, Object?> _metadata = {};
@@ -207,6 +211,7 @@ class LivenessSession {
         return;
       }
       // Within grace: pause in place, as for a brief face dropout.
+      _pausedSinceMs ??= timestampMs;
       _emitState(current.copyWith(
         faceInPosition: false,
         guidance: FaceGuidance.multipleFaces,
@@ -223,7 +228,7 @@ class LivenessSession {
     // timeouts above still run.
     if (qualityHold) {
       _faceLostSinceMs = null;
-      _detector?.reset();
+      _pausedSinceMs ??= timestampMs;
       _emitState(current.copyWith(guidance: guidance));
       return;
     }
@@ -238,8 +243,9 @@ class LivenessSession {
           _fail(LivenessFailureReason.faceLost);
           return;
         }
-        // Within grace: freeze, but pause detector state.
-        _detector?.reset();
+        // Within grace: stop feeding the detector but keep its state, so a
+        // one-frame ML Kit miss doesn't restart a hold.
+        _pausedSinceMs ??= timestampMs;
         _emitState(current.copyWith(faceInPosition: false, guidance: guidance));
         return;
       }
@@ -274,6 +280,7 @@ class LivenessSession {
         }
 
       case LivenessPhase.performingAction:
+        _resumeDetector(timestampMs);
         _runDetector(face, timestampMs);
 
       default:
@@ -282,6 +289,7 @@ class LivenessSession {
   }
 
   void _beginAction(int timestampMs) {
+    _pausedSinceMs = null;
     final action = _actions[_actionIndex];
     _detector = ActionDetector.forAction(action, config.tuning);
     _actionStartMs = timestampMs;
@@ -294,6 +302,19 @@ class LivenessSession {
       remaining: config.actionTimeout,
     ));
     _emitEvent(ActionStartedEvent(action, _actionIndex));
+  }
+
+  /// Ends a pause. Short pauses (up to [LivenessConfig.faceLostGrace]) keep
+  /// the detector's progress; longer ones (only possible via a quality
+  /// hold, since a longer face loss fails the session) restart the action,
+  /// because hold timers would otherwise count the unseen gap as held.
+  void _resumeDetector(int timestampMs) {
+    final pausedSince = _pausedSinceMs;
+    if (pausedSince == null) return;
+    _pausedSinceMs = null;
+    if (timestampMs - pausedSince > config.faceLostGrace.inMilliseconds) {
+      _detector?.reset();
+    }
   }
 
   void _runDetector(FaceSnapshot face, int timestampMs) {

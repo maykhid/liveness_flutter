@@ -55,6 +55,10 @@
   (the blink photo showed open eyes, the nod photo a level head) and from the
   newest camera frame rather than the analysed one. Each action's photo now
   comes from its peak frame (eyes shut, deepest nod, start of a held pose).
+- A single missed face detection (or one blurry or dark frame) reset the
+  current action, restarting a 400 ms pose hold. The detector is now paused
+  and keeps its progress for pauses up to `faceLostGrace`; a longer quality
+  pause restarts the action so the unseen gap never counts as held.
 
 # 0.4.4
 
