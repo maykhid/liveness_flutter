@@ -404,7 +404,47 @@ class LivenessConfig {
     this.boostScreenBrightness = true,
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
-  });
+  })  : assert(jpegQuality >= 1 && jpegQuality <= 100,
+            'jpegQuality must be 1–100'),
+        assert(maxImageDimension >= 64, 'maxImageDimension must be ≥ 64'),
+        assert(brightnessMin < brightnessMax,
+            'brightnessMin must be below brightnessMax');
+
+  /// Throws an [ArgumentError] describing the first invalid field.
+  ///
+  /// [LivenessSession] calls this in its constructor, and the
+  /// `LivenessDetector` widget turns a failure into an immediate
+  /// `systemError` result. Call it yourself to check a config up front.
+  void validate() {
+    if (actions.isEmpty) {
+      throw ArgumentError.value(actions, 'actions', 'must not be empty');
+    }
+    if (jpegQuality < 1 || jpegQuality > 100) {
+      throw ArgumentError.value(jpegQuality, 'jpegQuality', 'must be 1–100');
+    }
+    if (maxImageDimension < 64) {
+      throw ArgumentError.value(
+          maxImageDimension, 'maxImageDimension', 'must be ≥ 64');
+    }
+    if (brightnessMin >= brightnessMax) {
+      throw ArgumentError.value(
+          brightnessMin, 'brightnessMin', 'must be below brightnessMax');
+    }
+    void positive(Duration d, String name) {
+      if (d <= Duration.zero) {
+        throw ArgumentError.value(d, name, 'must be positive');
+      }
+    }
+
+    positive(actionTimeout, 'actionTimeout');
+    positive(neutralTimeout, 'neutralTimeout');
+    final session = sessionTimeout;
+    if (session != null) positive(session, 'sessionTimeout');
+    if (faceLostGrace < Duration.zero) {
+      throw ArgumentError.value(
+          faceLostGrace, 'faceLostGrace', 'must not be negative');
+    }
+  }
 
   /// Actions executed in order (unless [shuffleActions] is true).
   final List<LivenessAction> actions;

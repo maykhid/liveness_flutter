@@ -144,12 +144,31 @@ class _LivenessDetectorState extends State<LivenessDetector>
     WidgetsBinding.instance.addObserver(this);
     _startedAt = DateTime.now();
     _sessionId = _generateSessionId();
-    _session = LivenessSession(widget.config);
+    try {
+      _session = LivenessSession(widget.config);
+    } on ArgumentError catch (e, st) {
+      // Invalid config: never touch the camera. A placeholder session
+      // carries the failed state so the UI and result path work as usual.
+      _configError = (e, st);
+      _session = LivenessSession(
+        const LivenessConfig(actions: [LivenessAction.blink]),
+      );
+    }
     _session.addEventListener(_onSessionEvent);
     _init();
   }
 
+  (ArgumentError, StackTrace)? _configError;
+
   Future<void> _init() async {
+    final configError = _configError;
+    if (configError != null) {
+      final (error, stackTrace) = configError;
+      widget.onError?.call(error, stackTrace);
+      _extraMetadata['configError'] = error.toString();
+      _session.systemError();
+      return;
+    }
     if (widget.config.boostScreenBrightness) {
       // Best-effort: brightness control can be unavailable (e.g. some
       // OEMs); never block the session on it.

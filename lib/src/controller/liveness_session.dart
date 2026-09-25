@@ -43,6 +43,8 @@ class SessionFailedEvent extends LivenessEvent {
 ///
 /// Platform-independent and unit-testable.
 class LivenessSession {
+  /// Throws an [ArgumentError] if [config] is invalid (see
+  /// [LivenessConfig.validate]).
   LivenessSession(this.config, {Random? random})
       : _actions = config.shuffleActions
             ? (List.of(config.actions)..shuffle(random ?? Random()))
@@ -52,7 +54,9 @@ class LivenessSession {
             phase: LivenessPhase.initializing,
             totalActions: config.actions.length,
           ),
-        );
+        ) {
+    config.validate();
+  }
 
   final LivenessConfig config;
 

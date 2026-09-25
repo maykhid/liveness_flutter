@@ -8,6 +8,7 @@
   (`sessionTimeout`) and after 10 s of not returning to a neutral face
   (`neutralTimeout`). Pass `sessionTimeout: null` for the old unbounded
   behaviour.
+- `LivenessSession(config)` throws an `ArgumentError` for an invalid config.
 
 ### Added
 
@@ -15,6 +16,10 @@
   `LivenessConfig.neutralTimeout` (default 10 s).
 - `LivenessSession.tick(timestampMs)`: advances timers without a frame.
   The widget calls it every 250 ms.
+- `LivenessConfig.validate()` throws an `ArgumentError` for empty `actions`,
+  `jpegQuality` outside 1–100, `maxImageDimension` < 64, `brightnessMin` ≥
+  `brightnessMax`, and non-positive timeouts. `LivenessSession` calls it in
+  its constructor; the constructor also asserts the numeric ranges.
 
 ### Fixed
 
@@ -23,6 +28,10 @@
   neutral case fails with `actionTimeout` and
   `metadata['timeoutPhase'] = 'awaitingNeutral'`. The action timer now keeps
   running during a quality pause.
+- `LivenessConfig(actions: [])` threw a `RangeError` on every frame and never
+  ended. An invalid config now produces one immediate `systemError` result
+  (with `metadata['configError']`) and an `onError` call, without opening
+  the camera.
 
 # 0.4.4
 
