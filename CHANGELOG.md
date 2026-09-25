@@ -73,6 +73,8 @@
   now only set while an action is being performed.
 - Overexposed frames told the user to "Find better lighting"
   (`FaceGuidance.lowLight`). They now report `FaceGuidance.tooBright`.
+- `shuffleActions` used a non-cryptographic `Random()`; it now uses
+  `Random.secure()`, since the shuffle is an anti-replay measure.
 
 # 0.4.4
 

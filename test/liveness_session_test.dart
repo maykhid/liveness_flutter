@@ -152,7 +152,25 @@ void main() {
     expect(plain.actionOrder, actions);
   });
 
-  test('cancel produces cancelled failure', () {
+  test('B9c default shuffle (Random.secure) varies between sessions', () {
+    const actions = [
+      LivenessAction.blink,
+      LivenessAction.smile,
+      LivenessAction.nod,
+      LivenessAction.lookLeft,
+      LivenessAction.lookRight,
+    ];
+    final orders = {
+      for (var i = 0; i < 20; i++)
+        LivenessSession(
+          const LivenessConfig(actions: actions, shuffleActions: true),
+        ).actionOrder.join(','),
+    };
+    // 120 possible orders; 20 draws all landing on one is ~1e-40.
+    expect(orders.length, greaterThan(1));
+  });
+
+    test('cancel produces cancelled failure', () {
     final session = LivenessSession(
       const LivenessConfig(actions: [LivenessAction.smile]),
     );

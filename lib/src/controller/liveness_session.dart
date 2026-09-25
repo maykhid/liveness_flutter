@@ -54,9 +54,12 @@ class SessionFailedEvent extends LivenessEvent {
 class LivenessSession {
   /// Throws an [ArgumentError] if [config] is invalid (see
   /// [LivenessConfig.validate]).
+  ///
+  /// The shuffle uses [Random.secure] unless [random] is given (tests), so
+  /// the order can't be predicted from a seeded PRNG.
   LivenessSession(this.config, {Random? random})
       : _actions = config.shuffleActions
-            ? (List.of(config.actions)..shuffle(random ?? Random()))
+            ? (List.of(config.actions)..shuffle(random ?? Random.secure()))
             : List.of(config.actions),
         _state = ValueNotifier(
           LivenessSessionState(
