@@ -330,14 +330,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
       // Unusable frame: pause with guidance rather than running detection
       // on garbage. Skips the (pointless) ML call entirely.
       if (config.enableQualityChecks && quality != null) {
-        final FaceGuidance? qualityIssue =
-            quality.brightness < config.brightnessMin
-                ? FaceGuidance.lowLight
-                : quality.brightness > config.brightnessMax
-                    ? FaceGuidance.lowLight
-                    : quality.sharpness < config.sharpnessMin
-                        ? FaceGuidance.blurry
-                        : null;
+        final qualityIssue = quality.issueFor(config);
         if (qualityIssue != null) {
           _qualityViolations++;
           _analysedFrame = image;

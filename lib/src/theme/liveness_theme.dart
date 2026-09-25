@@ -72,6 +72,7 @@ class LivenessStrings {
       FaceGuidance.tooClose: 'Move back a little',
       FaceGuidance.notCentered: 'Center your face in the oval',
       FaceGuidance.lowLight: 'Find better lighting',
+      FaceGuidance.tooBright: 'Too bright — move out of direct light',
       FaceGuidance.blurry: 'Hold still — the image is blurry',
     },
     this.actionInstructions = const {

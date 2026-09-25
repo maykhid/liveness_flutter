@@ -16,6 +16,9 @@
   `timestampMs` is earlier than before. Set `captureAtPeak: false` for the
   old completion-frame photos. Custom `LivenessEvent` switches need an
   `ActionPeakEvent` case.
+- New `FaceGuidance.tooBright` value. Exhaustive `switch`es over
+  `FaceGuidance` need a new case, and a custom `guidanceMessages` map needs
+  an entry for it (or see the map-merging change below).
 
 ### Added
 
@@ -38,6 +41,8 @@
 - `LivenessConfig.invertPitch` (default `false`): flips up/down head tilt
   for devices where `lookUp`, `lookDown` or `nod` behave inverted, like
   `mirrorYaw` does for left/right.
+- `FaceGuidance.tooBright` with a default message, and
+  `FrameQuality.issueFor(config)`.
 
 ### Fixed
 
@@ -66,6 +71,8 @@
   pause restarts the action so the unseen gap never counts as held.
 - `state.remaining` kept a stale countdown after an action completed. It is
   now only set while an action is being performed.
+- Overexposed frames told the user to "Find better lighting"
+  (`FaceGuidance.lowLight`). They now report `FaceGuidance.tooBright`.
 
 # 0.4.4
 

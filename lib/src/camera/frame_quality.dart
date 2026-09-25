@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 
+import '../models/models.dart';
+
 /// Cheap per-frame quality metrics, computed by subsampling ~1 in 256
 /// pixels of the luma channel. Costs well under a millisecond per frame.
 class FrameQuality {
@@ -22,6 +24,15 @@ class FrameQuality {
   /// never pixel-identical (sensor noise); repeated identical hashes mean
   /// static/injected input. Used by the replay guard.
   final int hash;
+
+  /// The quality problem to show the user, or null if the frame is usable
+  /// under [config]'s thresholds.
+  FaceGuidance? issueFor(LivenessConfig config) {
+    if (brightness < config.brightnessMin) return FaceGuidance.lowLight;
+    if (brightness > config.brightnessMax) return FaceGuidance.tooBright;
+    if (sharpness < config.sharpnessMin) return FaceGuidance.blurry;
+    return null;
+  }
 }
 
 class FrameQualityAnalyzer {

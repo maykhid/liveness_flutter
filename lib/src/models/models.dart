@@ -91,6 +91,9 @@ enum FaceGuidance {
   tooClose,
   notCentered,
   lowLight,
+
+  /// Overexposed: direct sunlight or a lamp shining at the camera.
+  tooBright,
   blurry,
 }
 
