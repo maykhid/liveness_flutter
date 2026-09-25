@@ -71,9 +71,14 @@ class FakeFrameSource implements LivenessFrameSource {
         FrameQuality(brightness: 0.5, sharpness: 0.2, hash: f.id + 1);
   }
 
+  /// How many frames went through "ML Kit".
+  int detections = 0;
+
   @override
-  Future<List<FaceSnapshot>> detectFaces(Object frame, int timestampMs) async =>
-      [for (final f in (frame as FakeFrame).faces) restamp(f, timestampMs)];
+  Future<List<FaceSnapshot>> detectFaces(Object frame, int timestampMs) async {
+    detections++;
+    return [for (final f in (frame as FakeFrame).faces) restamp(f, timestampMs)];
+  }
 
   @override
   Future<Uint8List?> encodeJpeg(

@@ -424,9 +424,14 @@ class _LivenessRunState extends State<_LivenessRun>
     _maybeCaptureSequenceFrame(image);
     if (_busy) return;
 
-    // Throttle ML to ~10 fps.
+    // Throttle ML (~10 fps; ~20 fps while a blink could be missed).
     final now = _source.elapsedMs;
-    if (now - _lastProcessedMs < 100) return;
+    final action = _session.current.currentAction;
+    final interval = action == LivenessAction.blink ||
+            action == LivenessAction.eyesClosed
+        ? _d.config.mlIntervalBlink
+        : _d.config.mlInterval;
+    if (now - _lastProcessedMs < interval.inMilliseconds) return;
     _lastProcessedMs = now;
     _busy = true;
 

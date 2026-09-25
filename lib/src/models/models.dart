@@ -541,6 +541,7 @@ class DetectorTuning {
   const DetectorTuning({
     this.blinkClosedThreshold = 0.25,
     this.blinkOpenThreshold = 0.7,
+    this.blinkPartialCloseThreshold = 0.4,
     this.blinkMaxDuration = const Duration(milliseconds: 1500),
     this.smileThreshold = 0.75,
     this.fullTeethSmileThreshold = 0.85,
@@ -564,6 +565,12 @@ class DetectorTuning {
 
   final double blinkClosedThreshold;
   final double blinkOpenThreshold;
+
+  /// A fast blink can land between analysed frames with the lids only half
+  /// shut. Both eyes below this, between open frames, also counts as the
+  /// "closed" part of a blink. Set it to [blinkClosedThreshold] to require
+  /// fully closed eyes.
+  final double blinkPartialCloseThreshold;
   final Duration blinkMaxDuration;
   final double smileThreshold;
   final double fullTeethSmileThreshold;
@@ -636,6 +643,8 @@ class LivenessConfig {
     this.boostScreenBrightness = true,
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
+    this.mlInterval = const Duration(milliseconds: 100),
+    this.mlIntervalBlink = const Duration(milliseconds: 50),
     this.hapticFeedback = false,
     this.failOnFaceChange = false,
     this.challenge,
@@ -701,6 +710,8 @@ class LivenessConfig {
     if (ids.toSet().length != ids.length) {
       throw ArgumentError.value(ids, 'frameAnalyzers', 'ids must be unique');
     }
+    positive(mlInterval, 'mlInterval');
+    positive(mlIntervalBlink, 'mlIntervalBlink');
     if (flashAllowedMisses < 0 || flashAllowedMisses > 2) {
       throw ArgumentError.value(
           flashAllowedMisses, 'flashAllowedMisses', 'must be 0–2');
@@ -921,6 +932,16 @@ class LivenessConfig {
   /// does that job, faces the operator instead). Best-effort: ignored on
   /// devices without a torch.
   final bool assistedTorchEnabled;
+
+  /// Minimum time between face-detection runs (~10 fps by default). Lower
+  /// catches faster movement but costs battery and CPU.
+  final Duration mlInterval;
+
+  /// [mlInterval] while the current action is [LivenessAction.blink] or
+  /// [LivenessAction.eyesClosed]: a blink can be shorter than 100 ms, so
+  /// it's sampled at ~20 fps. The real rate is also limited by how fast
+  /// the device runs ML Kit.
+  final Duration mlIntervalBlink;
 
   /// Light haptic tick when an action completes (useful for
   /// [LivenessAction.eyesClosed], which the user can't see finish), and a

@@ -76,6 +76,11 @@ abstract class ActionDetector {
 }
 
 /// Eyes open -> both closed -> open again, within [DetectorTuning.blinkMaxDuration].
+///
+/// "Closed" includes a partial close (both eyes below
+/// [DetectorTuning.blinkPartialCloseThreshold]): at ~20 fps a fast blink
+/// is often caught with the lids half shut. It still has to sit between
+/// open frames, so a steady squint never completes.
 class BlinkDetector extends ActionDetector {
   BlinkDetector(super.tuning);
 
@@ -93,8 +98,11 @@ class BlinkDetector extends ActionDetector {
 
     final open =
         left > tuning.blinkOpenThreshold && right > tuning.blinkOpenThreshold;
-    final closed = left < tuning.blinkClosedThreshold &&
-        right < tuning.blinkClosedThreshold;
+    final closedLimit = math.max(
+      tuning.blinkClosedThreshold,
+      tuning.blinkPartialCloseThreshold,
+    );
+    final closed = left < closedLimit && right < closedLimit;
 
     switch (_stage) {
       case 0:

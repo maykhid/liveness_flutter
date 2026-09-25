@@ -139,6 +139,8 @@
   less than sensor noise (`FrameQuality.lumaSamples`) while the face box is
   frozen lower the confidence score
   (`metadata['confidence_nearDuplicate*']`). Soft signal only.
+- `LivenessConfig.mlInterval` (default 100 ms) and `mlIntervalBlink`
+  (default 50 ms); `DetectorTuning.blinkPartialCloseThreshold`.
 
 ### Fixed
 
@@ -220,6 +222,12 @@
 - Docs overstated the "replay guard": it only catches pixel-identical
   frames. It's now described as a static-feed guard, and the README says
   plainly that it can't detect a photo or screen held up to a real camera.
+- Fast blinks were often missed: ML ran at ~10 fps, so a sub-100 ms eye
+  closure could fall between analysed frames. During `blink` and
+  `eyesClosed` it now runs at ~20 fps (`mlIntervalBlink`), and a half-shut
+  reading between open frames counts as the closed part of a blink
+  (`DetectorTuning.blinkPartialCloseThreshold`, default 0.4). In simulation a
+  60 ms closure is now caught in ≥ 95 % of runs.
 
 # 0.4.4
 
