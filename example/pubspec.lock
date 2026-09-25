@@ -156,18 +156,18 @@ packages:
     dependency: transitive
     description:
       name: google_mlkit_commons
-      sha256: c7fc384bdb66c3b83e24e3a41818e61d7a378d900f65f5e775344fbca95a0917
+      sha256: "621e94de22fd0f1e902e593b892746d80ab7542b39c2552aa091d904eb82fc6f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.0"
+    version: "0.13.0"
   google_mlkit_face_detection:
     dependency: transitive
     description:
       name: google_mlkit_face_detection
-      sha256: "719735518c0a961072d1757a097af8fec458426accad0a58eae0763942a3f14c"
+      sha256: dd4a6c61e45390217cdc7522e7766b77e9d075cdface0503716ec6722e33d4f4
       url: "https://pub.dev"
     source: hosted
-    version: "0.14.0"
+    version: "0.15.1"
   html:
     dependency: transitive
     description:
@@ -238,7 +238,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.4.2"
+    version: "0.4.4"
   matcher:
     dependency: transitive
     description:
@@ -259,10 +259,10 @@ packages:
     dependency: transitive
     description:
       name: meta
-      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
+      sha256: "1741988757a65eb6b36abe716829688cf01910bbf91c34354ff7ec1c3de2b349"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.0"
+    version: "1.18.0"
   path:
     dependency: transitive
     description:
@@ -456,10 +456,10 @@ packages:
     dependency: transitive
     description:
       name: test_api
-      sha256: "8161c84903fd860b26bfdefb7963b3f0b68fee7adea0f59ef805ecca346f0c7a"
+      sha256: "949a932224383300f01be9221c39180316445ecb8e7547f70a41a35bf421fb9e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.10"
+    version: "0.7.11"
   typed_data:
     dependency: transitive
     description:
@@ -541,5 +541,5 @@ packages:
     source: hosted
     version: "7.0.1"
 sdks:
-  dart: ">=3.11.0 <4.0.0"
-  flutter: ">=3.38.0"
+  dart: ">=3.12.0 <4.0.0"
+  flutter: ">=3.44.0"
