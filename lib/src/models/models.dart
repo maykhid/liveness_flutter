@@ -128,6 +128,9 @@ enum LivenessFailureReason {
   /// Camera or ML pipeline error.
   systemError,
 
+  /// The user (or a device policy) denied camera access.
+  permissionDenied,
+
   /// The tracked face changed while a face stayed in view (only with
   /// [LivenessConfig.failOnFaceChange]).
   faceChanged,

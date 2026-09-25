@@ -229,6 +229,8 @@ class LivenessStrings {
     LivenessFailureReason.cancelled: 'Cancelled',
     LivenessFailureReason.spoofSuspected: "We couldn't confirm a live camera",
     LivenessFailureReason.systemError: 'Camera problem — please try again',
+    LivenessFailureReason.permissionDenied:
+        'Camera access is needed — allow it in Settings',
     LivenessFailureReason.faceChanged: 'A different face appeared',
     LivenessFailureReason.challengeExpired:
         'This check expired — please start again',

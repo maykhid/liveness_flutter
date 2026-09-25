@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:camera/camera.dart' show ResolutionPreset;
+import 'package:camera/camera.dart' show CameraException, ResolutionPreset;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:screen_brightness/screen_brightness.dart';
@@ -57,6 +57,7 @@ class LivenessDetector extends StatefulWidget {
     this.instructionAlignment = const Alignment(0, 0.72),
     this.closeButtonBuilder,
     this.onFeedback,
+    this.permissionDeniedBuilder,
   });
 
   /// Read once, when the widget is first inserted. Changing it on a
@@ -126,6 +127,14 @@ class LivenessDetector extends StatefulWidget {
   /// Placed at `theme.closeButtonAlignment` inside the safe area.
   final Widget Function(BuildContext context, VoidCallback onClose)?
       closeButtonBuilder;
+
+  /// Shown instead of the instruction panel when camera access was denied
+  /// (the session ends with [LivenessFailureReason.permissionDenied]).
+  /// `retry` starts a fresh session, e.g. after the user granted access
+  /// in Settings. If you use it, don't close the screen on a
+  /// `permissionDenied` result.
+  final Widget Function(BuildContext context, VoidCallback retry)?
+      permissionDeniedBuilder;
 
   /// Where the instruction panel sits.
   final AlignmentGeometry instructionAlignment;
@@ -382,10 +391,26 @@ class _LivenessRunState extends State<_LivenessRun>
       setState(() {});
     } catch (e, st) {
       _d.onError?.call(e, st);
-      _session.systemError();
+      if (_isPermissionError(e)) {
+        _session.permissionDenied();
+      } else {
+        _session.systemError();
+      }
       if (mounted) widget.controller._runStarted(this);
     }
   }
+
+  /// `package:camera` error codes for denied or restricted camera access
+  /// (iOS and Android; `cameraPermission` is the legacy Android code).
+  static const _permissionErrorCodes = {
+    'CameraAccessDenied',
+    'CameraAccessDeniedWithoutPrompt',
+    'CameraAccessRestricted',
+    'cameraPermission',
+  };
+
+  static bool _isPermissionError(Object e) =>
+      e is CameraException && _permissionErrorCodes.contains(e.code);
 
   static String _generateSessionId() {
     final random = Random.secure();
@@ -1039,12 +1064,19 @@ class _LivenessRunState extends State<_LivenessRun>
               alignment: _d.instructionAlignment,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: _d.instructionBuilder != null
-                    ? _d.instructionBuilder!(context, state)
-                    : DefaultInstructionPanel(
-                        state: state,
-                        theme: _d.theme,
-                      ),
+                child: state.failureReason ==
+                            LivenessFailureReason.permissionDenied &&
+                        _d.permissionDeniedBuilder != null
+                    ? _d.permissionDeniedBuilder!(
+                        context,
+                        () => widget.controller.restart(),
+                      )
+                    : _d.instructionBuilder != null
+                        ? _d.instructionBuilder!(context, state)
+                        : DefaultInstructionPanel(
+                            state: state,
+                            theme: _d.theme,
+                          ),
               ),
             ),
 

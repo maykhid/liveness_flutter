@@ -106,6 +106,12 @@ camera use):
 Also set `platform :ios, '15.5'` in `ios/Podfile` (the face detection
 library needs iOS 15.5+).
 
+**If the user says no to the camera**, the session ends with
+`failureReason == LivenessFailureReason.permissionDenied` (not a generic
+`systemError`), so you can send them to Settings. To handle it inside the
+liveness screen instead, pass `permissionDeniedBuilder: (context, retry)
+=> ...`; calling `retry` starts a fresh session.
+
 ## 📸 Photos, video, and "frame sequence" — which do I pick?
 
 **Capturing nothing is the default.** `capture` is an empty set unless you

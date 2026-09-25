@@ -46,6 +46,8 @@
   confidence score).
 - New `LivenessFailureReason.faceChanged`. ML Kit face tracking is now
   enabled when no action needs contours.
+- New `LivenessFailureReason.permissionDenied`. A denied camera used to
+  report `systemError`.
 
 ### Added
 
@@ -141,6 +143,11 @@
   (`metadata['confidence_nearDuplicate*']`). Soft signal only.
 - `LivenessConfig.mlInterval` (default 100 ms) and `mlIntervalBlink`
   (default 50 ms); `DetectorTuning.blinkPartialCloseThreshold`.
+- `LivenessFailureReason.permissionDenied` (from `CameraAccessDenied`,
+  `CameraAccessDeniedWithoutPrompt`, `CameraAccessRestricted` and legacy
+  `cameraPermission` errors) with its own failure text,
+  `LivenessSession.permissionDenied()`, and
+  `LivenessDetector.permissionDeniedBuilder` (with a `retry` callback).
 
 ### Fixed
 

@@ -151,6 +151,11 @@ class LivenessSession {
     _fail(LivenessFailureReason.systemError);
   }
 
+  void permissionDenied() {
+    if (isTerminal) return;
+    _fail(LivenessFailureReason.permissionDenied);
+  }
+
   /// The faces that matter, primary first: sorted by bounding-box area
   /// (largest first), with secondary faces smaller than
   /// [minAreaRatio] × the primary's area dropped.
