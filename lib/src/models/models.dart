@@ -342,6 +342,50 @@ abstract class LivenessAttestor {
   Future<String> attest(Uint8List payloadHash);
 }
 
+/// A frame handed to a [LivenessFrameAnalyzer].
+class LivenessFrame {
+  const LivenessFrame({
+    required this.jpeg,
+    required this.kind,
+    required this.timestampMs,
+    this.action,
+    this.faceBox,
+  });
+
+  /// The full frame: upright JPEG, longest side at most
+  /// [LivenessConfig.maxImageDimension].
+  final Uint8List jpeg;
+
+  /// The primary face's box, normalised to [jpeg] (0..1). Crop it the way
+  /// your model expects (many anti-spoof models want the box enlarged).
+  /// Null if no face was detected on this frame.
+  final Rect? faceBox;
+
+  /// [CaptureKind.reference], [CaptureKind.peak] or
+  /// [CaptureKind.completion].
+  final CaptureKind kind;
+  final LivenessAction? action;
+  final int timestampMs;
+}
+
+/// Plug-in presentation-attack detection (a TFLite / ONNX anti-spoof
+/// model, a cloud call, …). The package ships no model.
+///
+/// Analyzers run on the reference frame and on each action's evidence
+/// frame (whether or not photos are captured). Results land in
+/// `metadata['analyzers'][id]` and lower `confidenceScore` by
+/// [LivenessConfig.analyzerWeight] × the highest mean spoof probability.
+abstract class LivenessFrameAnalyzer {
+  const LivenessFrameAnalyzer();
+
+  /// Key in `metadata['analyzers']`. Must be unique per config.
+  String get id;
+
+  /// Spoof probability 0–1 (1 = attack), or null if this frame can't be
+  /// judged. Errors are counted in the metadata, never thrown to the user.
+  Future<double?> analyze(LivenessFrame frame);
+}
+
 /// One captured still image tied to a moment in the session.
 class CapturedImage {
   const CapturedImage({
@@ -596,6 +640,8 @@ class LivenessConfig {
     this.failOnFaceChange = false,
     this.challenge,
     this.attestor,
+    this.frameAnalyzers = const [],
+    this.analyzerWeight = 0.5,
   })  : assert(jpegQuality >= 1 && jpegQuality <= 100,
             'jpegQuality must be 1–100'),
         assert(maxImageDimension >= 64, 'maxImageDimension must be ≥ 64'),
@@ -648,6 +694,13 @@ class LivenessConfig {
     positive(neutralTimeout, 'neutralTimeout');
     final session = sessionTimeout;
     if (session != null) positive(session, 'sessionTimeout');
+    if (analyzerWeight < 0 || analyzerWeight > 1) {
+      throw ArgumentError.value(analyzerWeight, 'analyzerWeight', 'must be 0–1');
+    }
+    final ids = frameAnalyzers.map((a) => a.id).toList();
+    if (ids.toSet().length != ids.length) {
+      throw ArgumentError.value(ids, 'frameAnalyzers', 'ids must be unique');
+    }
     if (flashAllowedMisses < 0 || flashAllowedMisses > 2) {
       throw ArgumentError.value(
           flashAllowedMisses, 'flashAllowedMisses', 'must be 0–2');
@@ -676,6 +729,15 @@ class LivenessConfig {
   /// `onResult`; failures are reported in `metadata['attestationError']`
   /// and never block the result.
   final LivenessAttestor? attestor;
+
+  /// Presentation-attack detectors to run on evidence frames. See
+  /// [LivenessFrameAnalyzer]. Analyses still running 5 s after the session
+  /// ends are not waited for.
+  final List<LivenessFrameAnalyzer> frameAnalyzers;
+
+  /// Weight (0–1) of [frameAnalyzers] in `confidenceScore`: the score drops
+  /// by this × the highest per-analyzer mean spoof probability.
+  final double analyzerWeight;
 
   /// The actions this config asks for: [challenge]'s if set, else
   /// [actions].

@@ -341,6 +341,27 @@ that:
 **[Server verification guide →](doc/server_verification.md)** covers what
 your backend should check, with a payload-rebuild snippet.
 
+**Bring your own anti-spoof model (optional).** The package bundles no ML
+model, but `LivenessConfig.frameAnalyzers` lets you plug one in (a
+TFLite/ONNX presentation-attack detector, or a cloud call):
+
+```dart
+class MyPadModel extends LivenessFrameAnalyzer {
+  @override
+  String get id => 'pad-v2';
+
+  @override
+  Future<double?> analyze(LivenessFrame frame) async {
+    // frame.jpeg: the upright full frame; frame.faceBox: the face (0..1).
+    return myModel.spoofProbability(frame.jpeg, frame.faceBox); // 0–1
+  }
+}
+```
+
+It runs on the reference frame and on each action's evidence frame. Scores
+land in `metadata['analyzers']['pad-v2']` and lower `confidenceScore` by
+`analyzerWeight` (default 0.5) × the mean spoof probability.
+
 ## 🧑‍🤝‍🧑 Assisted mode: verifying someone else (opt-in)
 
 By default the person being verified holds the phone and uses the front

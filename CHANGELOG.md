@@ -129,6 +129,12 @@
   (`FaceSnapshot.identitySignature`). `LivenessConfig.failOnFaceChange`
   (opt-in) fails such sessions with the new
   `LivenessFailureReason.faceChanged`.
+- Presentation-attack detection hook: `LivenessConfig.frameAnalyzers`
+  (`LivenessFrameAnalyzer` returning a 0–1 spoof probability per
+  `LivenessFrame`: upright JPEG plus face box) and `analyzerWeight`. Runs on
+  the reference and evidence frames even when photos aren't captured;
+  results go to `metadata['analyzers']` and into the confidence score. No
+  model is bundled.
 
 ### Fixed
 

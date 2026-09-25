@@ -119,6 +119,20 @@ Rect faceSpaceToBuffer(
   return Rect.fromPoints(back(r.topLeft), back(r.bottomRight));
 }
 
+/// Maps a face-space rect onto the upright JPEG the package encodes. The
+/// encoder turns a landscape buffer upright, so only raw landscape face
+/// coordinates (iOS) need turning; upright ones (Android) already match.
+Rect faceSpaceToUpright(Rect r, CameraGeometry geometry) {
+  final size = geometry.faceSpaceSize;
+  final quarter =
+      geometry.rotationDegrees == 90 || geometry.rotationDegrees == 270;
+  if (!quarter || size.width <= size.height) return r;
+  Offset turn(Offset p) => geometry.rotationDegrees == 90
+      ? Offset(1 - p.dy, p.dx)
+      : Offset(p.dy, 1 - p.dx);
+  return Rect.fromPoints(turn(r.topLeft), turn(r.bottomRight));
+}
+
 /// The region a face must occupy to count as "in position", in face space.
 class TargetZone {
   const TargetZone(this.rect, this.shape);

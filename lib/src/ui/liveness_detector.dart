@@ -236,7 +236,10 @@ class _LivenessRunState extends State<_LivenessRun>
   /// detectors actually judged), and the latest peak frame for the
   /// current action.
   Object? _analysedFrame;
-  ({Object frame, int index, int timestampMs})? _peak;
+  FaceSnapshot? _analysedFace;
+  ({Object frame, FaceSnapshot? face, int index, int timestampMs})? _peak;
+  final Map<String, List<double>> _analyzerScores = {};
+  final Map<String, int> _analyzerErrors = {};
   final List<CapturedImage> _images = [];
   final List<CapturedImage> _frames = [];
   final List<Future<void>> _pendingEncodes = [];
@@ -444,6 +447,7 @@ class _LivenessRunState extends State<_LivenessRun>
           _qualityViolations++;
           _identityGuard.onFrame(null); // unseen: may hide a swap
           _analysedFrame = image;
+          _analysedFace = null;
           _session.onFrame(
             faces: const [],
             faceInPosition: false,
@@ -477,6 +481,7 @@ class _LivenessRunState extends State<_LivenessRun>
               : _positionIssueFor(primary);
 
       _analysedFrame = image;
+      _analysedFace = primary;
       _session.onFrame(
         faces: relevant,
         faceInPosition: positionIssue == null,
@@ -542,8 +547,8 @@ class _LivenessRunState extends State<_LivenessRun>
   void _onSessionEvent(LivenessEvent event) {
     switch (event) {
       case ReferenceReadyEvent():
-        if (_d.config.captureImages &&
-            _d.config.captureReferenceImage) {
+        if ((_d.config.captureImages && _d.config.captureReferenceImage) ||
+            _d.config.frameAnalyzers.isNotEmpty) {
           _captureFrame(null, kind: CaptureKind.reference);
         }
       case ActionStartedEvent(:final action, :final index):
@@ -557,7 +562,12 @@ class _LivenessRunState extends State<_LivenessRun>
       case ActionPeakEvent(:final index, :final timestampMs):
         final frame = _analysedFrame;
         if (frame != null) {
-          _peak = (frame: frame, index: index, timestampMs: timestampMs);
+          _peak = (
+            frame: frame,
+            face: _analysedFace,
+            index: index,
+            timestampMs: timestampMs,
+          );
         }
       case ActionCompletedEvent(:final action, :final index):
         _d.onActionCompleted?.call(action, index);
@@ -566,7 +576,7 @@ class _LivenessRunState extends State<_LivenessRun>
           action: action,
           index: index,
         ));
-        if (_d.config.captureImages) {
+        if (_d.config.captureImages || _d.config.frameAnalyzers.isNotEmpty) {
           final peak = _peak;
           if (_d.config.captureAtPeak &&
               peak != null &&
@@ -575,6 +585,7 @@ class _LivenessRunState extends State<_LivenessRun>
               action,
               kind: CaptureKind.peak,
               frame: peak.frame,
+              face: peak.face,
               timestampMs: peak.timestampMs,
             );
           } else {
@@ -613,9 +624,18 @@ class _LivenessRunState extends State<_LivenessRun>
     LivenessAction? action, {
     required CaptureKind kind,
     Object? frame,
+    FaceSnapshot? face,
     int? timestampMs,
   }) {
+    final usesAnalysedFrame = frame == null && _analysedFrame != null;
     final source = frame ?? _analysedFrame ?? _lastFrame;
+    final faceOnFrame = face ?? (usesAnalysedFrame ? _analysedFace : null);
+    final geometry = _source.geometry;
+    final faceBox = faceOnFrame == null || geometry == null
+        ? null
+        : faceSpaceToUpright(faceOnFrame.boundingBox, geometry);
+    final keep = _d.config.captureImages &&
+        (kind != CaptureKind.reference || _d.config.captureReferenceImage);
     if (source == null) return;
     final ts = timestampMs ?? _source.elapsedMs;
     final maxDimension = _d.config.maxImageDimension;
@@ -644,7 +664,8 @@ class _LivenessRunState extends State<_LivenessRun>
           _d.onError?.call(e, st);
         }
       }
-      if (bytes != null) {
+      if (bytes == null) return;
+      if (keep) {
         _images.add(
           CapturedImage(
             bytes: bytes,
@@ -654,7 +675,52 @@ class _LivenessRunState extends State<_LivenessRun>
           ),
         );
       }
+      await _runAnalyzers(LivenessFrame(
+        jpeg: bytes,
+        kind: kind,
+        action: action,
+        timestampMs: ts,
+        faceBox: faceBox,
+      ));
     }());
+  }
+
+  Future<void> _runAnalyzers(LivenessFrame frame) async {
+    await Future.wait([
+      for (final analyzer in _d.config.frameAnalyzers)
+        () async {
+          try {
+            final score = await analyzer.analyze(frame);
+            if (score != null) {
+              (_analyzerScores[analyzer.id] ??= []).add(score.clamp(0, 1));
+            }
+          } catch (e, st) {
+            _analyzerErrors.update(analyzer.id, (n) => n + 1,
+                ifAbsent: () => 1);
+            _d.onError?.call(e, st);
+          }
+        }(),
+    ]);
+  }
+
+  /// Per-analyzer results for the metadata, and the confidence penalty.
+  (Map<String, Object?>, double) _analyzerSummary() {
+    var worstMean = 0.0;
+    final summary = <String, Object?>{};
+    for (final analyzer in _d.config.frameAnalyzers) {
+      final scores = List.of(_analyzerScores[analyzer.id] ?? const <double>[]);
+      final mean = scores.isEmpty
+          ? null
+          : scores.reduce((a, b) => a + b) / scores.length;
+      if (mean != null && mean > worstMean) worstMean = mean;
+      summary[analyzer.id] = {
+        'scores': scores,
+        'mean': mean,
+        'max': scores.isEmpty ? null : scores.reduce(max),
+        'errors': _analyzerErrors[analyzer.id] ?? 0,
+      };
+    }
+    return (summary, worstMean * _d.config.analyzerWeight);
   }
 
   /// Steady-rate frame-sequence capture ([CaptureType.frameSequence]).
@@ -786,6 +852,8 @@ class _LivenessRunState extends State<_LivenessRun>
     var confidence = success ? 1.0 : 0.5 * completedRatio;
     confidence -= _spoofGuard.confidencePenalty;
     confidence -= _identityGuard.confidencePenalty;
+    final (analyzers, analyzerPenalty) = _analyzerSummary();
+    confidence -= analyzerPenalty;
     confidence -= (_qualityViolations * 0.005).clamp(0.0, 0.2);
     confidence -= _flashPenalty;
     confidence = confidence.clamp(0.0, 1.0);
@@ -808,6 +876,7 @@ class _LivenessRunState extends State<_LivenessRun>
         ..._extraMetadata,
         ..._spoofGuard.metadata,
         ..._identityGuard.metadata,
+        if (analyzers.isNotEmpty) 'analyzers': analyzers,
         'confidence_qualityViolations': _qualityViolations,
         'cameraMode': _d.config.cameraMode.name,
         if (reason == LivenessFailureReason.cancelled)

@@ -503,6 +503,62 @@ void main() {
       expect(result.confidenceScore, lessThan(0.9));
     });
   });
+
+  group('S3 frame analyzers', () {
+    Future<LivenessResult> run(
+      WidgetTester tester,
+      List<LivenessFrameAnalyzer> analyzers, {
+      Set<CaptureType> capture = const {},
+    }) async {
+      usePhoneScreen(tester);
+      final results = <LivenessResult>[];
+      await tester.pumpWidget(MaterialApp(
+        home: LivenessDetector(
+          config: LivenessConfig(
+            actions: const [LivenessAction.smile],
+            capture: capture,
+            frameAnalyzers: analyzers,
+            analyzerWeight: 0.5,
+          ),
+          onResult: results.add,
+        ),
+      ));
+      await tester.pump();
+      await harness.step(tester, [face()]);
+      await harness.hold(tester, [face(smile: 0.9)], 700);
+      await tester.pump(const Duration(seconds: 1));
+      return results.single;
+    }
+
+    testWidgets('run on the reference and peak frames, even without capture',
+        (tester) async {
+      final analyzer = _ScoringAnalyzer('pad', 0.8);
+      final result = await run(tester, [analyzer]);
+
+      expect(result.images, isEmpty, reason: 'nothing captured');
+      expect(analyzer.frames.map((f) => f.kind),
+          [CaptureKind.reference, CaptureKind.peak]);
+      expect(analyzer.frames.last.action, LivenessAction.smile);
+      expect(analyzer.frames.every((f) => f.faceBox != null), isTrue);
+      expect(analyzer.frames.every((f) => f.jpeg.isNotEmpty), isTrue);
+
+      final summary = (result.metadata['analyzers']! as Map)['pad'] as Map;
+      expect(summary['scores'], [0.8, 0.8]);
+      expect(summary['mean'], closeTo(0.8, 1e-9));
+      // 1.0 − 0.5 × 0.8
+      expect(result.confidenceScore, closeTo(0.6, 1e-9));
+    });
+
+    testWidgets('errors are counted and never break the session',
+        (tester) async {
+      final result = await run(tester, [_ThrowingAnalyzer()]);
+      expect(result.success, isTrue);
+      final summary = (result.metadata['analyzers']! as Map)['broken'] as Map;
+      expect(summary['errors'], 2);
+      expect(summary['mean'], isNull);
+      expect(result.confidenceScore, 1.0);
+    });
+  });
 }
 
 class _RecordingAttestor extends LivenessAttestor {
@@ -521,4 +577,27 @@ class _FailingAttestor extends LivenessAttestor {
   @override
   Future<String> attest(Uint8List payloadHash) async =>
       throw StateError('nope');
+}
+
+class _ScoringAnalyzer extends LivenessFrameAnalyzer {
+  _ScoringAnalyzer(this.id, this.score);
+  @override
+  final String id;
+  final double score;
+  final frames = <LivenessFrame>[];
+
+  @override
+  Future<double?> analyze(LivenessFrame frame) async {
+    frames.add(frame);
+    return score;
+  }
+}
+
+class _ThrowingAnalyzer extends LivenessFrameAnalyzer {
+  @override
+  String get id => 'broken';
+
+  @override
+  Future<double?> analyze(LivenessFrame frame) async =>
+      throw StateError('model failed');
 }
