@@ -52,6 +52,9 @@ class LivenessDetector extends StatefulWidget {
     this.showDebugOverlay = false,
   });
 
+  /// Read once, when the widget is first inserted. Changing it on a
+  /// rebuild has no effect on a running session; give the widget a new
+  /// `key` to start a fresh session with a different config.
   final LivenessConfig config;
 
   /// Called exactly once when the session ends (success, failure, or cancel).
