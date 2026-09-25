@@ -133,7 +133,7 @@ class LivenessDetector extends StatefulWidget {
   final ResolutionPreset cameraResolution;
 
   /// Show live detection values on screen (euler angles, eye/smile
-  /// probabilities, brightness, sharpness, replay-guard counters). For
+  /// probabilities, brightness, sharpness, static-feed guard counters). For
   /// development and threshold tuning — leave off in production.
   final bool showDebugOverlay;
 
@@ -471,7 +471,11 @@ class _LivenessRunState extends State<_LivenessRun>
       final primary = relevant.isEmpty ? null : relevant.first;
       _lastSnapshot = primary;
 
-      _spoofGuard.onFrame(hash: quality?.hash, face: primary);
+      _spoofGuard.onFrame(
+        hash: quality?.hash,
+        face: primary,
+        luma: quality?.lumaSamples,
+      );
       _identityGuard.onFrame(primary);
 
       final positionIssue = primary == null

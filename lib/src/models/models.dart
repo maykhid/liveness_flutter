@@ -120,7 +120,7 @@ enum LivenessFailureReason {
   /// The user cancelled the session.
   cancelled,
 
-  /// The replay guard saw a long run of pixel-identical frames — a live
+  /// The static-feed guard saw a long run of pixel-identical frames — a live
   /// camera always has sensor noise, so this indicates injected/static
   /// input rather than a real camera feed.
   spoofSuspected,
@@ -872,9 +872,11 @@ class LivenessConfig {
   /// Brightness spread (0–1) below this = likely blurry / out of focus.
   final double sharpnessMin;
 
-  /// Fail the session when a long run of pixel-identical frames is seen
-  /// (a live camera always has sensor noise; identical frames mean a
-  /// static/injected image). Also feeds the confidence score.
+  /// The static-feed guard (see `SpoofGuard`): fail the session when a
+  /// long run of pixel-identical frames is seen (a live camera always has
+  /// sensor noise; identical frames mean a static/injected image). Near-
+  /// identical frames with a frozen face box lower the confidence score.
+  /// It does not detect a photo or screen held up to a real camera.
   final bool enableReplayGuard;
 
   /// Opt-in screen-reflection challenge against video replays.

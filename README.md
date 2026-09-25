@@ -35,7 +35,7 @@ model downloads. No account.**
 |---|---|
 | 🎯 **13 challenge actions** | blink, smile, fullTeethSmile, nod, look left/right/up/down, tilt left/right, eyes closed, open mouth, draw-a-circle-with-your-nose |
 | 🎲 **Anti-replay shuffle** | random action order per session, so a pre-recorded video can't follow the script |
-| 🕵️ **Anti-spoof, zero ML** | replay guard (sensor-noise check), micro-motion analysis, frame-quality gates, opt-in color-flash challenge |
+| 🕵️ **Anti-spoof, zero ML** | static-feed guard (catches frozen or injected camera feeds), micro-motion analysis, frame-quality gates, opt-in color-flash challenge, plus hooks for server challenges, attestation and your own anti-spoof model |
 | 📸 **Evidence capture** | photos per action, full video, or a works-everywhere frame sequence — your server verifies, not just the phone |
 | 🔌 **Any backend** | `onResult` hands you everything; built-in multipart uploader with progress, or bring dio/S3/Firebase/anything |
 | 🎨 **Fully yours** | theme every color and string (localizable), or replace whole UI layers with your own widgets |
@@ -388,7 +388,7 @@ LivenessConfig(
   `assistedTorchEnabled: false`. Skipped on devices without a torch.
 - The **color-flash challenge is automatically skipped** (the screen's
   colors can't reach the subject's face):
-  `metadata['flashChallenge'] = 'skippedAssistedMode'`. Replay guard,
+  `metadata['flashChallenge'] = 'skippedAssistedMode'`. Static-feed guard,
   micro-motion, and quality gates still run.
 - `metadata['cameraMode']` tells your backend which mode was used — decide
   whether assisted sessions need extra review, since the operator (not the
@@ -466,7 +466,7 @@ server can check too.
 ## 🔧 Developer goodies
 
 - **Debug overlay** — `showDebugOverlay: true` shows live head angles,
-  eye/smile probabilities, brightness, and replay-guard counters on
+  eye/smile probabilities, brightness, and static-feed guard counters on
   screen, and draws a green box where the detector thinks your face is
   (if it doesn't sit on your face, please open an issue with your device). Perfect for tuning `DetectorTuning` thresholds on real devices.
 - **Per-action callbacks** — `onActionStarted` / `onActionCompleted`
@@ -535,13 +535,18 @@ sessions outright. It's off by default because a very fast head turn can
 make some devices re-assign the ID. This is no substitute for server-side
 face matching.
 
-**The anti-spoof checks are honest heuristics, not magic.** The replay
-guard catches static images and naive injected feeds; micro-motion flags
-unnaturally still sessions in the confidence score. Neither stops a
-sophisticated attacker with a high-quality replay rig — that's what
-server-side review of the captured media is for. If the replay guard ever
-misfires on a device (it shouldn't — real sensors are noisy),
-`enableReplayGuard: false` turns it off.
+**The anti-spoof checks are honest heuristics, not magic.** The
+*static-feed guard* (called the replay guard before 0.5; the setting is
+still `enableReplayGuard`) catches input that can't come from a live
+camera: pixel-identical frames fail the session, and near-identical frames
+with a frozen face box (a re-encoded still injected as a camera) lower the
+confidence score. Micro-motion flags unnaturally still sessions the same
+way. **None of it detects a photo, screen or video held up to a real
+camera**: the real camera adds real noise and the hand adds real motion.
+That's what the actions, the colour flash, and server-side review of the
+captured media are for. If the guard ever misfires on a device (it
+shouldn't — real sensors are noisy), `enableReplayGuard: false` turns it
+off.
 
 ---
 

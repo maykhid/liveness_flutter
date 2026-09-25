@@ -227,7 +227,7 @@ class LivenessSession {
   /// [guidance] — what to tell the user right now (surfaced in state).
   /// [qualityHold] — frame is unusable (too dark/blurry): pause without
   /// counting toward face-lost failure.
-  /// [spoofSuspected] — replay guard tripped: fail immediately.
+  /// [spoofSuspected] — static-feed guard tripped: fail immediately.
   /// [faceChanged] — identity guard saw a face swap: fail immediately.
   void onFrame({
     required List<FaceSnapshot> faces,

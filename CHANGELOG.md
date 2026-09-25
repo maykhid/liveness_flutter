@@ -135,6 +135,10 @@
   the reference and evidence frames even when photos aren't captured;
   results go to `metadata['analyzers']` and into the confidence score. No
   model is bundled.
+- Near-duplicate detection in the static-feed guard: frames that differ by
+  less than sensor noise (`FrameQuality.lumaSamples`) while the face box is
+  frozen lower the confidence score
+  (`metadata['confidence_nearDuplicate*']`). Soft signal only.
 
 ### Fixed
 
@@ -213,6 +217,9 @@
   in 5,000 runs.
 - Frame-sequence capture paused during the flash challenge, contradicting
   the README's "the flash moment is captured" claim. It now continues.
+- Docs overstated the "replay guard": it only catches pixel-identical
+  frames. It's now described as a static-feed guard, and the README says
+  plainly that it can't detect a photo or screen held up to a real camera.
 
 # 0.4.4
 
