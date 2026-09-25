@@ -413,6 +413,48 @@ void main() {
     // 1 of 2 planned actions: 0.5 × ½ (not ⅓ of the 3-action pool).
     expect(results.single.confidenceScore, closeTo(0.25, 1e-9));
   });
+
+  testWidgets('S5 flash: face-box sampling, exposure lock, frames keep coming',
+      (tester) async {
+    usePhoneScreen(tester);
+    final controller = LivenessController();
+    addTearDown(controller.dispose);
+    final results = <LivenessResult>[];
+    await tester.pumpWidget(MaterialApp(
+      home: LivenessDetector(
+        controller: controller,
+        config: const LivenessConfig(
+          actions: [LivenessAction.smile],
+          enableFlashChallenge: true,
+          capture: {CaptureType.frameSequence},
+        ),
+        onResult: results.add,
+      ),
+    ));
+    await tester.pump();
+    await harness.step(tester, [face()]);
+    await harness.hold(tester, [face(smile: 0.9)], 700);
+    expect(controller.state.phase, LivenessPhase.completed);
+    final completedAt = harness.source.elapsedMs;
+
+    // ~2.6 s of flash: keep the camera running.
+    await harness.hold(tester, [face()], 3000);
+    await tester.pump(const Duration(seconds: 1));
+
+    final source = harness.source;
+    expect(source.exposureLocks, [true, false]);
+    expect(source.sampledFaceBoxes, isNotEmpty);
+    expect(source.sampledFaceBoxes.every((b) => b != null), isTrue);
+
+    final result = results.single;
+    // The fake reflects nothing, so the challenge must not pass.
+    expect(result.metadata['flashChallenge'], 'failed');
+    expect(
+      result.frameSequence.where((f) => f.timestampMs > completedAt),
+      isNotEmpty,
+      reason: 'frames are captured during the flash',
+    );
+  });
 }
 
 class _RecordingAttestor extends LivenessAttestor {

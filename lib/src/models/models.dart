@@ -575,6 +575,7 @@ class LivenessConfig {
     this.sharpnessMin = 0.03,
     this.enableReplayGuard = true,
     this.enableFlashChallenge = false,
+    this.flashAllowedMisses = 0,
     this.boostScreenBrightness = true,
     this.cameraMode = LivenessCameraMode.selfService,
     this.assistedTorchEnabled = true,
@@ -633,6 +634,10 @@ class LivenessConfig {
     positive(neutralTimeout, 'neutralTimeout');
     final session = sessionTimeout;
     if (session != null) positive(session, 'sessionTimeout');
+    if (flashAllowedMisses < 0 || flashAllowedMisses > 2) {
+      throw ArgumentError.value(
+          flashAllowedMisses, 'flashAllowedMisses', 'must be 0–2');
+    }
     if (multipleFacesGrace < Duration.zero) {
       throw ArgumentError.value(
           multipleFacesGrace, 'multipleFacesGrace', 'must not be negative');
@@ -815,6 +820,10 @@ class LivenessConfig {
   /// on its own. Treat failures as "review", not "fraud", and decide the
   /// weight server-side. See the README section on this feature.
   final bool enableFlashChallenge;
+
+  /// Colour phases of the flash challenge that may fail while it still
+  /// passes (0–2). 0 by default: every colour must be reflected.
+  final int flashAllowedMisses;
 
   /// Raise the screen to full brightness while the liveness screen is open,
   /// restoring the user's setting when it closes. The screen lights the

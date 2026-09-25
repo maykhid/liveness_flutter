@@ -404,6 +404,18 @@ depends on the phone screen being a meaningful light source on the face:
 | 🏢 Bright office / large windows | Weak — real faces may score `'inconclusive'` or `'failed'` |
 | ☀️ Outdoors in daylight | Little to no signal — results not meaningful |
 
+**How it decides.** Only pixels inside the detected face are sampled
+(background doesn't reflect the screen), the first 150 ms of each colour
+is skipped while the display and camera catch up, and auto-exposure is
+locked for the duration where the device allows it. Each colour must
+raise its own channel clearly above the frame-to-frame noise measured
+before the flash, both against that baseline and against the other
+colours. By default all three colours must pass
+(`flashAllowedMisses: 0`). In simulation, pure camera noise passes 0 times
+in 5,000 runs, where the pre-0.5 rule passed about 1 in 20. White balance
+can't be locked through the camera plugin, so strongly tinted light can
+still skew it.
+
 Other weakeners: phone held far from the face, very low screen brightness,
 strongly colored ambient light. To help, the package **raises the screen
 to full brightness automatically** during the session and restores it
@@ -414,8 +426,8 @@ A failed challenge lowers `confidenceScore` by 0.35 and sets
 itself. **Treat a failure as "review this one", not "this is fraud."**
 Log the metadata for a few weeks and learn your real users' pass rate
 before enforcing anything. Bonus: the flash moment is captured in your
-video/frames — a real face visibly changes color, which your server can
-check too.
+video and frame sequence — a real face visibly changes color, which your
+server can check too.
 
 ## 🎛️ Media size & cleanup
 

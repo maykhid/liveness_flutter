@@ -40,6 +40,10 @@
   text from `failureMessages` instead of `failed`.
 - New `LivenessFailureReason.challengeExpired`. `LivenessConfig.actions` may
   be empty when a `challenge` is set.
+- `FlashChallenge.phase` is now read-only; use `beginPhase(phase,
+  timestampMs)`. The flash challenge is stricter, so borderline real faces
+  that passed before may now be `failed` (it still only lowers the
+  confidence score).
 
 ### Added
 
@@ -113,6 +117,9 @@
   `actions` (a pool) and shuffle them, per session. Docs now recommend at
   least one motion action, since pose-only actions can be satisfied by a
   photo.
+- `LivenessConfig.flashAllowedMisses` (default 0); `FlashChallenge` gains
+  `beginPhase()`, `allowedMisses`, `k`, `settle`, `minDelta` and
+  `sampleRgb(region:)`.
 
 ### Fixed
 
@@ -180,6 +187,17 @@
   the defaults.
 - The failure confidence score divided progress by `config.actions.length`
   rather than the number of actions actually planned for the session.
+- The colour-flash challenge was easy to pass by chance: it sampled the
+  centre of the whole frame (including background), counted the moments
+  right after each colour switch, allowed one wrong colour, and used a fixed
+  0.004 threshold. It now samples inside the face box, skips the first
+  150 ms of each colour, requires every colour by default, and requires each
+  rise to beat 3 standard errors of the measured baseline noise against the
+  baseline and the other colours. Auto-exposure is locked during the flash
+  where supported. In simulation, noise-only passes dropped from ~5 % to 0
+  in 5,000 runs.
+- Frame-sequence capture paused during the flash challenge, contradicting
+  the README's "the flash moment is captured" claim. It now continues.
 
 # 0.4.4
 

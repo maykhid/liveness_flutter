@@ -405,8 +405,14 @@ class _LivenessRunState extends State<_LivenessRun>
     // Flash challenge active: sample colors on every frame, skip ML.
     final challenge = _flashChallenge;
     if (challenge != null) {
-      final rgb = _source.sampleRgb(image);
-      if (rgb != null) challenge.addSample(rgb);
+      // Sample under the face only: background doesn't reflect the screen.
+      final rgb =
+          _source.sampleRgb(image, faceBox: _lastSnapshot?.boundingBox);
+      if (rgb != null) {
+        challenge.addSample(rgb, timestampMs: _source.elapsedMs);
+      }
+      // The flash moment is evidence too: keep the frame sequence going.
+      _maybeCaptureSequenceFrame(image);
       return;
     }
 
@@ -652,7 +658,8 @@ class _LivenessRunState extends State<_LivenessRun>
     // Only capture while the session is actively verifying.
     final phase = _session.current.phase;
     if (phase != LivenessPhase.performingAction &&
-        phase != LivenessPhase.awaitingNeutral) {
+        phase != LivenessPhase.awaitingNeutral &&
+        _flashChallenge == null) {
       return;
     }
     final now = _source.elapsedMs;
@@ -807,21 +814,26 @@ class _LivenessRunState extends State<_LivenessRun>
   /// samples. Result is a confidence penalty + metadata, never a hard fail.
   Future<void> _runFlashChallenge() async {
     if (_finished) return;
-    final challenge = FlashChallenge();
+    final challenge = FlashChallenge(
+      allowedMisses: _d.config.flashAllowedMisses,
+    );
+    // Fixed exposure, so the camera doesn't compensate the colour away.
+    await _source.lockExposure(true);
     _flashChallenge = challenge;
     try {
-      challenge.phase = -1;
+      challenge.beginPhase(-1, _source.elapsedMs);
       _flashTint.value = null;
       await Future<void>.delayed(const Duration(milliseconds: 600));
       for (var i = 0; i < challenge.colors.length; i++) {
         if (_finished || !mounted) break;
-        challenge.phase = i;
+        challenge.beginPhase(i, _source.elapsedMs);
         _flashTint.value = challenge.colors[i].tint;
         await Future<void>.delayed(const Duration(milliseconds: 650));
       }
     } finally {
       _flashTint.value = null;
       _flashChallenge = null;
+      await _source.lockExposure(false);
     }
     final passed = challenge.evaluate();
     _extraMetadata.addAll(challenge.metadataFor(passed));

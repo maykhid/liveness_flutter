@@ -57,9 +57,15 @@ abstract class LivenessFrameSource {
     bool background = true,
   });
 
-  /// Mean R, G, B (0–255) over the centre of [frame], for the flash
-  /// challenge.
-  List<double>? sampleRgb(Object frame);
+  /// Mean R, G, B (0–255) for the flash challenge: over [faceBox] (face
+  /// space, as in [FaceSnapshot.boundingBox]) when given, else over the
+  /// centre of [frame].
+  List<double>? sampleRgb(Object frame, {Rect? faceBox});
+
+  /// Best-effort: freeze (or release) auto-exposure so the flash
+  /// challenge's colour change isn't compensated away. White balance can't
+  /// be locked through `package:camera`.
+  Future<void> lockExposure(bool locked);
 
   /// Facts for `LivenessResult.metadata` (e.g. `videoUnavailable`).
   Map<String, Object?> get metadata;
@@ -281,8 +287,32 @@ class CameraFrameSource implements LivenessFrameSource {
   }
 
   @override
-  List<double>? sampleRgb(Object frame) =>
-      FlashChallenge.sampleCenterRgb(frame as CameraImage);
+  List<double>? sampleRgb(Object frame, {Rect? faceBox}) {
+    final image = frame as CameraImage;
+    final geometry = _geometry;
+    if (faceBox == null || geometry == null) {
+      return FlashChallenge.sampleCenterRgb(image);
+    }
+    return FlashChallenge.sampleRgb(
+      image,
+      region: faceSpaceToBuffer(
+        faceBox,
+        rotationDegrees: geometry.rotationDegrees,
+        uprightCoordinates: Platform.isAndroid,
+      ),
+    );
+  }
+
+  @override
+  Future<void> lockExposure(bool locked) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+    try {
+      await controller.setExposureMode(
+        locked ? ExposureMode.locked : ExposureMode.auto,
+      );
+    } catch (_) {}
+  }
 
   @override
   Future<String?> stop() async {

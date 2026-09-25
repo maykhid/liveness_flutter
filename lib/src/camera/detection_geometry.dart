@@ -100,6 +100,25 @@ class DetectionGeometry {
       Rect.fromPoints(faceToView(r.topLeft), faceToView(r.bottomRight));
 }
 
+/// Maps a face-space rect to the camera buffer's own (unrotated)
+/// normalised space, e.g. to sample pixels under the face. Android reports
+/// faces upright ([uprightCoordinates]), so the clockwise turn by
+/// [rotationDegrees] is undone; iOS already reports buffer space.
+Rect faceSpaceToBuffer(
+  Rect r, {
+  required int rotationDegrees,
+  required bool uprightCoordinates,
+}) {
+  if (!uprightCoordinates) return r;
+  Offset back(Offset p) => switch (rotationDegrees) {
+        90 => Offset(p.dy, 1 - p.dx),
+        180 => Offset(1 - p.dx, 1 - p.dy),
+        270 => Offset(1 - p.dy, p.dx),
+        _ => p,
+      };
+  return Rect.fromPoints(back(r.topLeft), back(r.bottomRight));
+}
+
 /// The region a face must occupy to count as "in position", in face space.
 class TargetZone {
   const TargetZone(this.rect, this.shape);

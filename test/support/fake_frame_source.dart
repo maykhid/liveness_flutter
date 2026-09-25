@@ -87,8 +87,19 @@ class FakeFrameSource implements LivenessFrameSource {
     return Future.value(Uint8List.fromList([0xFF, 0xD8, id & 0xFF]));
   }
 
+  /// RGB returned for flash-challenge samples; tests can script it.
+  List<double> Function(int elapsedMs) rgb = (_) => const [120, 110, 100];
+  final List<Rect?> sampledFaceBoxes = [];
+  final List<bool> exposureLocks = [];
+
   @override
-  List<double>? sampleRgb(Object frame) => const [120, 110, 100];
+  List<double>? sampleRgb(Object frame, {Rect? faceBox}) {
+    sampledFaceBoxes.add(faceBox);
+    return rgb(elapsedMs);
+  }
+
+  @override
+  Future<void> lockExposure(bool locked) async => exposureLocks.add(locked);
 
   @override
   Map<String, Object?> get metadata => const {};
