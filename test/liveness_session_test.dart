@@ -95,16 +95,18 @@ void main() {
         session.current.failureReason, LivenessFailureReason.actionTimeout);
   });
 
-  test('fails on multiple faces', () {
+  test('fails on multiple faces held past the grace period', () {
     final session = LivenessSession(
       const LivenessConfig(actions: [LivenessAction.smile]),
     );
     session.start();
-    session.onFrame(
-      faces: [neutral(0), neutral(0)],
-      faceInPosition: true,
-      timestampMs: 0,
-    );
+    for (var t = 0; t <= 600; t += 100) {
+      session.onFrame(
+        faces: [neutral(t), neutral(t)],
+        faceInPosition: true,
+        timestampMs: t,
+      );
+    }
     expect(session.current.phase, LivenessPhase.failed);
     expect(
         session.current.failureReason, LivenessFailureReason.multipleFaces);

@@ -197,6 +197,9 @@ class FaceSnapshot {
 
   final int? trackingId;
 
+  /// Bounding-box area as a fraction of the image (0..1).
+  double get area => boundingBox.width * boundingBox.height;
+
   /// Whether both eyes are confidently open.
   bool get eyesOpen =>
       (leftEyeOpenProbability ?? 0) > 0.7 && (rightEyeOpenProbability ?? 0) > 0.7;
@@ -347,6 +350,7 @@ class DetectorTuning {
     this.circleMinSweepDegrees = 270,
     this.circleWindow = const Duration(seconds: 10),
     this.circleMinRadius = 6,
+    this.secondaryFaceMinAreaRatio = 0.35,
   });
 
   final double blinkClosedThreshold;
@@ -373,6 +377,11 @@ class DetectorTuning {
   /// Minimum head deflection (degrees, combined yaw+pitch magnitude) for a
   /// frame to count toward circular motion.
   final double circleMinRadius;
+
+  /// Secondary faces smaller than this fraction of the primary (largest)
+  /// face's area are ignored: a poster, a TV, or someone far behind the
+  /// user shouldn't count as a second face.
+  final double secondaryFaceMinAreaRatio;
 }
 
 /// Configuration for a liveness session.
@@ -387,6 +396,7 @@ class LivenessConfig {
     this.faceLostGrace = const Duration(milliseconds: 800),
     this.requireNeutralBetweenActions = true,
     this.failOnMultipleFaces = true,
+    this.multipleFacesGrace = const Duration(milliseconds: 500),
     this.captureReferenceImage = true,
     this.tuning = const DetectorTuning(),
     this.mirrorYaw = true,
@@ -440,6 +450,10 @@ class LivenessConfig {
     positive(neutralTimeout, 'neutralTimeout');
     final session = sessionTimeout;
     if (session != null) positive(session, 'sessionTimeout');
+    if (multipleFacesGrace < Duration.zero) {
+      throw ArgumentError.value(
+          multipleFacesGrace, 'multipleFacesGrace', 'must not be negative');
+    }
     if (faceLostGrace < Duration.zero) {
       throw ArgumentError.value(
           faceLostGrace, 'faceLostGrace', 'must not be negative');
@@ -490,7 +504,15 @@ class LivenessConfig {
   /// Require a neutral face between actions (prevents pose-holding).
   final bool requireNeutralBetweenActions;
 
+  /// Fail with [LivenessFailureReason.multipleFaces] when a second face of
+  /// comparable size stays in frame for longer than [multipleFacesGrace].
+  /// When false, the largest face is used and the others are ignored.
   final bool failOnMultipleFaces;
+
+  /// How long a second face may be continuously visible before the session
+  /// fails. Until then the session pauses and shows
+  /// [FaceGuidance.multipleFaces].
+  final Duration multipleFacesGrace;
 
   /// Capture a neutral reference image right before the first action
   /// (only when [CaptureType.images] is enabled).

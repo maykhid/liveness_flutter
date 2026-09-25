@@ -360,20 +360,24 @@ class _LivenessDetectorState extends State<LivenessDetector>
                 timestampMs: now,
               ))
           .toList();
+      final relevant = LivenessSession.relevantFaces(
+        snapshots,
+        minAreaRatio: config.tuning.secondaryFaceMinAreaRatio,
+      );
 
-      final primary = snapshots.isEmpty ? null : snapshots.first;
+      final primary = relevant.isEmpty ? null : relevant.first;
       _lastSnapshot = primary;
 
       _spoofGuard.onFrame(hash: quality?.hash, face: primary);
 
       final positionIssue = primary == null
           ? FaceGuidance.noFace
-          : snapshots.length > 1
+          : relevant.length > 1
               ? FaceGuidance.multipleFaces
               : _positionIssue(primary);
 
       _session.onFrame(
-        faces: snapshots,
+        faces: relevant,
         faceInPosition: positionIssue == null,
         timestampMs: now,
         guidance: positionIssue ?? FaceGuidance.none,

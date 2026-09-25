@@ -79,6 +79,7 @@ class LivenessSession {
   int? _sessionStartMs;
   int? _neutralStartMs;
   int? _faceLostSinceMs;
+  int? _multipleFacesSinceMs;
   bool _referenceEmitted = false;
   final List<LivenessAction> _completed = [];
   final Map<String, Object?> _metadata = {};
@@ -102,6 +103,22 @@ class LivenessSession {
   void systemError() {
     if (isTerminal) return;
     _fail(LivenessFailureReason.systemError);
+  }
+
+  /// The faces that matter, primary first: sorted by bounding-box area
+  /// (largest first), with secondary faces smaller than
+  /// [minAreaRatio] × the primary's area dropped.
+  static List<FaceSnapshot> relevantFaces(
+    List<FaceSnapshot> faces, {
+    double minAreaRatio = 0.35,
+  }) {
+    if (faces.length < 2) return faces;
+    final sorted = List.of(faces)..sort((a, b) => b.area.compareTo(a.area));
+    final minArea = sorted.first.area * minAreaRatio;
+    return [
+      sorted.first,
+      ...sorted.skip(1).where((f) => f.area >= minArea),
+    ];
   }
 
   /// Advance timers without a frame. Call periodically (the widget does,
@@ -145,7 +162,8 @@ class LivenessSession {
 
   /// Feed one frame's worth of detection output.
   ///
-  /// [faces] — all faces detected this frame (normalized snapshots).
+  /// [faces] — all faces detected this frame (normalized snapshots). The
+  /// largest is the primary face; see [relevantFaces].
   /// [faceInPosition] — whether the primary face is inside the target oval
   /// (computed by the UI layer, which knows the oval geometry).
   /// [guidance] — what to tell the user right now (surfaced in state).
@@ -169,12 +187,26 @@ class LivenessSession {
 
     if (_checkTimeouts(timestampMs)) return;
 
-    if (faces.length > 1 && config.failOnMultipleFaces) {
-      _fail(LivenessFailureReason.multipleFaces);
+    final relevant = relevantFaces(
+      faces,
+      minAreaRatio: config.tuning.secondaryFaceMinAreaRatio,
+    );
+    if (relevant.length > 1 && config.failOnMultipleFaces) {
+      final since = _multipleFacesSinceMs ??= timestampMs;
+      if (timestampMs - since > config.multipleFacesGrace.inMilliseconds) {
+        _fail(LivenessFailureReason.multipleFaces);
+        return;
+      }
+      // Within grace: pause in place, as for a brief face dropout.
+      _emitState(current.copyWith(
+        faceInPosition: false,
+        guidance: FaceGuidance.multipleFaces,
+      ));
       return;
     }
+    _multipleFacesSinceMs = null;
 
-    final face = faces.isEmpty ? null : faces.first;
+    final face = relevant.isEmpty ? null : relevant.first;
 
     // Unusable frame (dark/blurry): freeze in place. Doesn't accumulate
     // toward face-lost — a dim room shouldn't fail the session straight

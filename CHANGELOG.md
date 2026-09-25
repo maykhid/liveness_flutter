@@ -9,6 +9,9 @@
   (`neutralTimeout`). Pass `sessionTimeout: null` for the old unbounded
   behaviour.
 - `LivenessSession(config)` throws an `ArgumentError` for an invalid config.
+- `multipleFaces` failures now need a second face for more than
+  `multipleFacesGrace` (500 ms). Set it to `Duration.zero` for the old
+  instant behaviour.
 
 ### Added
 
@@ -20,6 +23,9 @@
   `jpegQuality` outside 1–100, `maxImageDimension` < 64, `brightnessMin` ≥
   `brightnessMax`, and non-positive timeouts. `LivenessSession` calls it in
   its constructor; the constructor also asserts the numeric ranges.
+- `LivenessConfig.multipleFacesGrace` (default 500 ms),
+  `DetectorTuning.secondaryFaceMinAreaRatio` (default 0.35),
+  `LivenessSession.relevantFaces()` and `FaceSnapshot.area`.
 
 ### Fixed
 
@@ -32,6 +38,12 @@
   ended. An invalid config now produces one immediate `systemError` result
   (with `metadata['configError']`) and an `onError` call, without opening
   the camera.
+- A single frame with a second face (a poster, a TV, someone walking past)
+  failed the session instantly. Secondary faces under 35 % of the primary
+  face's area are now ignored, and a comparable second face must stay for
+  more than 500 ms before the session fails. Until then the session pauses
+  with `FaceGuidance.multipleFaces`. The primary face is now the largest one,
+  not the first one ML Kit returns.
 
 # 0.4.4
 
