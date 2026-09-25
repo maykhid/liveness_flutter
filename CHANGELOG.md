@@ -97,6 +97,9 @@
   `sessionSucceeded`, `sessionFailed`) for sounds, haptics or TTS;
   `LivenessConfig.hapticFeedback` (opt-in); the instruction text is now a
   screen-reader live region, so each new instruction is announced.
+- `ResolutionPreset` (for `LivenessDetector.cameraResolution`) is
+  re-exported, so you no longer need to depend on `package:camera` to set
+  it.
 
 ### Fixed
 

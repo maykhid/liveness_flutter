@@ -1,6 +1,9 @@
 /// Plug-and-play, customizable liveness detection for Flutter.
 library;
 
+// Needed for LivenessDetector.cameraResolution without importing camera.
+export 'package:camera/camera.dart' show ResolutionPreset;
+
 export 'src/camera/detection_geometry.dart' show TargetShape;
 export 'src/camera/frame_quality.dart' show FrameQuality;
 export 'src/camera/liveness_capabilities.dart';
