@@ -93,6 +93,9 @@ LivenessDetector(
 
 ## ⚙️ Setting up Android and iOS
 
+Needs **Flutter 3.38+** (Dart 3.10+), the minimum for `package:camera`
+0.12.
+
 **Android** — set `minSdkVersion 24` in your app.
 
 **iOS** — add to `ios/Runner/Info.plist` (without it the app crashes on
@@ -179,11 +182,15 @@ tools:
   attestor's token, when you use them (see "Binding sessions to your
   server")
 - `completedActions` — which actions, in the order performed
-- `images` — the photos, each labeled with the action it belongs to
+- `images` — the photos, each labeled with its action and `kind`
+  (`reference`, or `peak`: taken at the moment the action was clearest,
+  e.g. eyes shut for a blink)
 - `frameSequence` — the steady-stream photos, each with a timestamp
 - `videoPath` — where the video file is, if you recorded one
 - `failureReason` — why it failed (took too long, face left the screen,
-  more than one face, replay/static input suspected, user cancelled…)
+  more than one face, static/injected input suspected, camera access
+  denied, user cancelled…). Cancelled results say who in
+  `metadata['cancelledBy']`
 - `metadata` — extras like how long each action took
 
 Log it with `debugPrint(result.toString())`, or `result.toJson()` for a
@@ -485,8 +492,8 @@ server can check too.
 - **Session log** — `debugPrint(result.toString())` prints a readable
   block: actions, timings, confidence penalties, media counts.
 - **Guidance state** — `state.guidance` tells you exactly what's wrong
-  right now (`tooFar`, `tooClose`, `notCentered`, `lowLight`, `blurry`,
-  `multipleFaces`) with translatable default messages.
+  right now (`tooFar`, `tooClose`, `notCentered`, `lowLight`, `tooBright`,
+  `blurry`, `multipleFaces`) with translatable default messages.
 
 ## 📖 Honest notes — read before shipping
 
@@ -519,19 +526,27 @@ their whole head in a circle, and small/slow circles don't count. Expect
 more retries. Test on your users' actual phones before making it
 mandatory.
 
-**Left and right.** `lookLeft` means the *user's* left. Calibrated for
-Android and iPhone; if some device gets it backwards, `mirrorYaw: false`
-flips it.
+**Left and right, up and down.** `lookLeft` means the *user's* left.
+Calibrated for Android and iPhone; if some device gets it backwards,
+`mirrorYaw: false` flips it. `invertPitch: true` does the same for
+`lookUp`, `lookDown` and `nod` (the up/down sign hasn't been confirmed on
+every iPhone yet; `showDebugOverlay` shows the live pitch).
 
-**Give people time.** Each action has a 15-second limit (`actionTimeout`)
-and users must return to a neutral face between actions. For users who
-find the actions difficult, use fewer/easier actions (blink, smile), a
-longer timeout, and `requireNeutralBetweenActions: false`.
+**Give people time — but not forever.** Each action has a 15-second limit
+(`actionTimeout`), users get 10 seconds to return to a neutral face
+between actions (`neutralTimeout`), and the whole session ends after 2
+minutes (`sessionTimeout`, `null` to disable). For users who find the
+actions difficult, use fewer/easier actions (blink, smile), longer
+timeouts, and `requireNeutralBetweenActions: false`. A second face in the
+background is ignored if it's small, and only fails the session if it
+stays for more than half a second (`multipleFacesGrace`).
 
 **It needs light — but it tells the user.** Too-dark, overexposed, and
-blurry frames pause the session (they won't fail it) with a hint like
-"Find better lighting". Thresholds: `brightnessMin`, `brightnessMax`,
-`sharpnessMin`; disable with `enableQualityChecks: false`.
+blurry frames pause the session with a hint like "Find better lighting".
+The action's timer keeps running while paused, so a room that stays too
+dark ends in `actionTimeout` rather than hanging. Thresholds:
+`brightnessMin`, `brightnessMax`, `sharpnessMin`; disable with
+`enableQualityChecks: false`.
 
 **Same person throughout?** With ML Kit tracking (on unless an action
 needs contours), a face ID that changes while a face stays in view lowers

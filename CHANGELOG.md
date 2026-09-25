@@ -1,4 +1,11 @@
-# 0.5.0 (unreleased)
+# 0.5.0
+
+A reliability and honesty release: sessions can no longer hang, `onResult`
+really is called exactly once, the on-screen oval now decides where the
+face must be, evidence photos show the action, and the anti-spoof pieces do
+what the README says. New hooks bind sessions to your server (challenges,
+image hashes, attestation) and let you plug in your own anti-spoof model.
+Pre-1.0, so there are breaking changes; each is listed below.
 
 ### Breaking
 
@@ -72,8 +79,8 @@
   `mirrorYaw` does for left/right.
 - `FaceGuidance.tooBright` with a default message, and
   `FrameQuality.issueFor(config)`.
-- `metadata['cancelledBy']` on cancelled results: `'user'`, `'lifecycle'` or
-  `'dispose'`.
+- `metadata['cancelledBy']` on cancelled results: `'user'`, `'lifecycle'`,
+  `'dispose'` or `'restart'`.
 - `HttpLivenessUploader.client`: inject an `http.Client` (your own, or a
   `MockClient` in tests).
 - `HttpLivenessUploader.timeout` (default 60 s per attempt), `maxRetries`
@@ -242,6 +249,9 @@
 - The example README said the platform folders weren't checked in (they
   are; only the pub.dev package omits them), listed `minSdkVersion 21` (the
   package needs 24), and described outdated upload fields.
+- The declared SDK constraints (Dart 3.4 / Flutter 3.22) were lower than
+  the dependencies allow: `camera` 0.12 needs Dart 3.10 / Flutter 3.38, and
+  the code already used Flutter 3.27 APIs. `pubspec.yaml` now says so.
 
 # 0.4.4
 
