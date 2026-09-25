@@ -47,6 +47,7 @@ void main() {
     expect(events, [
       ReferenceReadyEvent,
       ActionStartedEvent,
+      ActionPeakEvent,
       ActionCompletedEvent,
       SessionCompletedEvent,
     ]);

@@ -110,6 +110,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
   bool _busy = false;
   bool _finished = false;
   CameraImage? _lastFrame;
+
+  /// The frame most recently handed to the session (i.e. what the
+  /// detectors actually judged), and the latest peak frame for the
+  /// current action.
+  CameraImage? _analysedFrame;
+  ({CameraImage frame, int index, int timestampMs})? _peak;
   final List<CapturedImage> _images = [];
   final List<CapturedImage> _frames = [];
   final List<Future<void>> _pendingEncodes = [];
@@ -333,6 +339,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
                         : null;
         if (qualityIssue != null) {
           _qualityViolations++;
+          _analysedFrame = image;
           _session.onFrame(
             faces: const [],
             faceInPosition: false,
@@ -376,6 +383,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
               ? FaceGuidance.multipleFaces
               : _positionIssue(primary);
 
+      _analysedFrame = image;
       _session.onFrame(
         faces: relevant,
         faceInPosition: positionIssue == null,
@@ -413,13 +421,34 @@ class _LivenessDetectorState extends State<LivenessDetector>
       case ReferenceReadyEvent():
         if (widget.config.captureImages &&
             widget.config.captureReferenceImage) {
-          _captureFrame(null);
+          _captureFrame(null, kind: CaptureKind.reference);
         }
       case ActionStartedEvent(:final action, :final index):
+        _peak = null;
         widget.onActionStarted?.call(action, index);
+      case ActionPeakEvent(:final index, :final timestampMs):
+        final frame = _analysedFrame;
+        if (frame != null) {
+          _peak = (frame: frame, index: index, timestampMs: timestampMs);
+        }
       case ActionCompletedEvent(:final action, :final index):
         widget.onActionCompleted?.call(action, index);
-        if (widget.config.captureImages) _captureFrame(action);
+        if (widget.config.captureImages) {
+          final peak = _peak;
+          if (widget.config.captureAtPeak &&
+              peak != null &&
+              peak.index == index) {
+            _captureFrame(
+              action,
+              kind: CaptureKind.peak,
+              frame: peak.frame,
+              timestampMs: peak.timestampMs,
+            );
+          } else {
+            _captureFrame(action, kind: CaptureKind.completion);
+          }
+        }
+        _peak = null;
       case SessionCompletedEvent():
         final assisted =
             widget.config.cameraMode == LivenessCameraMode.assisted;
@@ -440,13 +469,18 @@ class _LivenessDetectorState extends State<LivenessDetector>
 
   /// Per-action capture: copy the frame cheaply, encode in a background
   /// isolate, collect the result. Order is restored by timestamp at finish.
-  void _captureFrame(LivenessAction? action) {
-    final frame = _lastFrame;
+  void _captureFrame(
+    LivenessAction? action, {
+    required CaptureKind kind,
+    CameraImage? frame,
+    int? timestampMs,
+  }) {
+    final source = frame ?? _analysedFrame ?? _lastFrame;
     final converter = _converter;
-    if (frame == null || converter == null) return;
-    final raw = converter.toRaw(frame);
+    if (source == null || converter == null) return;
+    final raw = converter.toRaw(source);
     if (raw == null) return;
-    final ts = _clock.elapsedMilliseconds;
+    final ts = timestampMs ?? _clock.elapsedMilliseconds;
     final request = EncodeRequest(
       raw,
       maxDimension: widget.config.maxImageDimension,
@@ -463,7 +497,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
       }
       if (bytes != null) {
         _images.add(
-          CapturedImage(bytes: bytes, action: action, timestampMs: ts),
+          CapturedImage(
+            bytes: bytes,
+            action: action,
+            timestampMs: ts,
+            kind: kind,
+          ),
         );
       }
     }());
@@ -500,7 +539,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
         final bytes = await compute(encodeRawFrame, request);
         if (bytes != null) {
           _frames.add(
-            CapturedImage(bytes: bytes, action: null, timestampMs: now),
+            CapturedImage(
+              bytes: bytes,
+              action: null,
+              timestampMs: now,
+              kind: CaptureKind.sequence,
+            ),
           );
         }
       } catch (e, st) {

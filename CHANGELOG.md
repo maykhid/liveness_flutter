@@ -12,6 +12,10 @@
 - `multipleFaces` failures now need a second face for more than
   `multipleFacesGrace` (500 ms). Set it to `Duration.zero` for the old
   instant behaviour.
+- Action photos are now taken at the action's peak by default, so their
+  `timestampMs` is earlier than before. Set `captureAtPeak: false` for the
+  old completion-frame photos. Custom `LivenessEvent` switches need an
+  `ActionPeakEvent` case.
 
 ### Added
 
@@ -26,6 +30,9 @@
 - `LivenessConfig.multipleFacesGrace` (default 500 ms),
   `DetectorTuning.secondaryFaceMinAreaRatio` (default 0.35),
   `LivenessSession.relevantFaces()` and `FaceSnapshot.area`.
+- `DetectorUpdate.isPeak`, `ActionPeakEvent`, `CapturedImage.kind`
+  (`reference` | `peak` | `completion` | `sequence`) and
+  `LivenessConfig.captureAtPeak` (default `true`).
 
 ### Fixed
 
@@ -44,6 +51,10 @@
   more than 500 ms before the session fails. Until then the session pauses
   with `FaceGuidance.multipleFaces`. The primary face is now the largest one,
   not the first one ML Kit returns.
+- Evidence photos missed the action: they were taken after it completed
+  (the blink photo showed open eyes, the nod photo a level head) and from the
+  newest camera frame rather than the analysed one. Each action's photo now
+  comes from its peak frame (eyes shut, deepest nod, start of a held pose).
 
 # 0.4.4
 

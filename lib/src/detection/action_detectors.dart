@@ -4,9 +4,19 @@ import '../models/models.dart';
 
 /// Result of feeding one frame to an [ActionDetector].
 class DetectorUpdate {
-  const DetectorUpdate({required this.progress, required this.completed});
+  const DetectorUpdate({
+    required this.progress,
+    required this.completed,
+    this.isPeak = false,
+  });
   final double progress;
   final bool completed;
+
+  /// This frame best shows the action: eyes shut for a blink, the lowest
+  /// point of a nod, the start of a held pose or expression. The widget
+  /// keeps the latest peak frame as the action's evidence photo
+  /// (`LivenessConfig.captureAtPeak`).
+  final bool isPeak;
 
   static const none = DetectorUpdate(progress: 0, completed: false);
   static const done = DetectorUpdate(progress: 1, completed: true);
@@ -81,9 +91,10 @@ class BlinkDetector extends ActionDetector {
     final right = face.rightEyeOpenProbability;
     if (left == null || right == null) return _progress();
 
-    final open = left > tuning.blinkOpenThreshold && right > tuning.blinkOpenThreshold;
-    final closed =
-        left < tuning.blinkClosedThreshold && right < tuning.blinkClosedThreshold;
+    final open =
+        left > tuning.blinkOpenThreshold && right > tuning.blinkOpenThreshold;
+    final closed = left < tuning.blinkClosedThreshold &&
+        right < tuning.blinkClosedThreshold;
 
     switch (_stage) {
       case 0:
@@ -92,6 +103,7 @@ class BlinkDetector extends ActionDetector {
         if (closed) {
           _stage = 2;
           _closedAtMs = face.timestampMs;
+          return _progress(isPeak: true);
         }
       case 2:
         final elapsed = face.timestampMs - (_closedAtMs ?? face.timestampMs);
@@ -105,8 +117,8 @@ class BlinkDetector extends ActionDetector {
     return _progress();
   }
 
-  DetectorUpdate _progress() =>
-      DetectorUpdate(progress: _stage / 3, completed: false);
+  DetectorUpdate _progress({bool isPeak = false}) =>
+      DetectorUpdate(progress: _stage / 3, completed: false, isPeak: isPeak);
 
   @override
   void reset() {
@@ -152,12 +164,16 @@ class SmileDetector extends ActionDetector {
       _startMs = null;
       return DetectorUpdate.none;
     }
+    final isPeak = _startMs == null;
     _startMs ??= nowMs;
     final elapsed = nowMs - _startMs!;
-    if (elapsed >= hold.inMilliseconds) return DetectorUpdate.done;
+    if (elapsed >= hold.inMilliseconds) {
+      return DetectorUpdate(progress: 1, completed: true, isPeak: isPeak);
+    }
     return DetectorUpdate(
       progress: elapsed / hold.inMilliseconds,
       completed: false,
+      isPeak: isPeak,
     );
   }
 
@@ -191,8 +207,8 @@ class EyesClosedDetector extends ActionDetector {
 
     // "Closed" is judged leniently here (below the open threshold) because
     // half-closed readings are common while eyes are actually shut.
-    final closed = left < tuning.blinkOpenThreshold &&
-        right < tuning.blinkOpenThreshold;
+    final closed =
+        left < tuning.blinkOpenThreshold && right < tuning.blinkOpenThreshold;
 
     if (closed) {
       // If eyes were open for longer than the tolerance, restart the hold.
@@ -201,7 +217,14 @@ class EyesClosedDetector extends ActionDetector {
         _closedStartMs = null;
       }
       _openSinceMs = null;
-      _closedStartMs ??= now;
+      if (_closedStartMs == null) {
+        _closedStartMs = now;
+        if (holdMs <= 0) {
+          return const DetectorUpdate(
+              progress: 1, completed: true, isPeak: true);
+        }
+        return _progress(now, holdMs, isPeak: true);
+      }
       if (now - _closedStartMs! >= holdMs) return DetectorUpdate.done;
     } else {
       _openSinceMs ??= now;
@@ -212,12 +235,13 @@ class EyesClosedDetector extends ActionDetector {
     return _progress(now, holdMs);
   }
 
-  DetectorUpdate _progress(int now, int holdMs) {
+  DetectorUpdate _progress(int now, int holdMs, {bool isPeak = false}) {
     final start = _closedStartMs;
     if (start == null) return DetectorUpdate.none;
     return DetectorUpdate(
       progress: ((now - start) / holdMs).clamp(0.0, 1.0),
       completed: false,
+      isPeak: isPeak,
     );
   }
 
@@ -233,6 +257,7 @@ class NodDetector extends ActionDetector {
   NodDetector(super.tuning);
 
   int _stage = 0; // 0 neutral, 1 down, 2 returned
+  double? _lowestPitch;
 
   @override
   LivenessAction get action => LivenessAction.nod;
@@ -246,15 +271,30 @@ class NodDetector extends ActionDetector {
       case 0:
         if (pitch.abs() < 8) _stage = 1;
       case 1:
-        if (pitch < -tuning.nodPitchThreshold) _stage = 2;
+        if (pitch < -tuning.nodPitchThreshold) {
+          _stage = 2;
+          _lowestPitch = pitch;
+          return _progress(isPeak: true);
+        }
       case 2:
         if (pitch > -4) return DetectorUpdate.done;
+        // Deepest point of the nod so far.
+        if (pitch < _lowestPitch!) {
+          _lowestPitch = pitch;
+          return _progress(isPeak: true);
+        }
     }
-    return DetectorUpdate(progress: _stage / 3, completed: false);
+    return _progress();
   }
 
+  DetectorUpdate _progress({bool isPeak = false}) =>
+      DetectorUpdate(progress: _stage / 3, completed: false, isPeak: isPeak);
+
   @override
-  void reset() => _stage = 0;
+  void reset() {
+    _stage = 0;
+    _lowestPitch = null;
+  }
 }
 
 /// Generic held-pose detector for look/tilt actions.
@@ -312,13 +352,17 @@ class HeadPoseDetector extends ActionDetector {
       final approach = (value / _threshold).clamp(0.0, 1.0) * 0.5;
       return DetectorUpdate(progress: approach, completed: false);
     }
+    final isPeak = _startMs == null;
     _startMs ??= face.timestampMs;
     final elapsed = face.timestampMs - _startMs!;
     final holdMs = tuning.poseHold.inMilliseconds;
-    if (elapsed >= holdMs) return DetectorUpdate.done;
+    if (elapsed >= holdMs) {
+      return DetectorUpdate(progress: 1, completed: true, isPeak: isPeak);
+    }
     return DetectorUpdate(
       progress: 0.5 + 0.5 * (elapsed / holdMs),
       completed: false,
+      isPeak: isPeak,
     );
   }
 
@@ -343,17 +387,22 @@ class OpenMouthDetector extends ActionDetector {
     if (ratio < tuning.mouthOpenRatioThreshold) {
       _startMs = null;
       return DetectorUpdate(
-        progress: (ratio / tuning.mouthOpenRatioThreshold).clamp(0.0, 1.0) * 0.5,
+        progress:
+            (ratio / tuning.mouthOpenRatioThreshold).clamp(0.0, 1.0) * 0.5,
         completed: false,
       );
     }
+    final isPeak = _startMs == null;
     _startMs ??= face.timestampMs;
     final elapsed = face.timestampMs - _startMs!;
     final holdMs = tuning.expressionHold.inMilliseconds;
-    if (elapsed >= holdMs) return DetectorUpdate.done;
+    if (elapsed >= holdMs) {
+      return DetectorUpdate(progress: 1, completed: true, isPeak: isPeak);
+    }
     return DetectorUpdate(
       progress: 0.5 + 0.5 * (elapsed / holdMs),
       completed: false,
+      isPeak: isPeak,
     );
   }
 
@@ -423,14 +472,14 @@ class CircleNoseDetector extends ActionDetector {
     _lastAngle = angle;
 
     if (math.max(_cwSweep, _ccwSweep) >= tuning.circleMinSweepDegrees) {
-      return DetectorUpdate.done;
+      // Mid-motion, so the completing frame is as good as any.
+      return const DetectorUpdate(progress: 1, completed: true, isPeak: true);
     }
     return _progress();
   }
 
   DetectorUpdate _progress() => DetectorUpdate(
-        progress: (math.max(_cwSweep, _ccwSweep) /
-                tuning.circleMinSweepDegrees)
+        progress: (math.max(_cwSweep, _ccwSweep) / tuning.circleMinSweepDegrees)
             .clamp(0.0, 1.0),
         completed: false,
       );

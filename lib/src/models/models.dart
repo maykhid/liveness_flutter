@@ -202,7 +202,8 @@ class FaceSnapshot {
 
   /// Whether both eyes are confidently open.
   bool get eyesOpen =>
-      (leftEyeOpenProbability ?? 0) > 0.7 && (rightEyeOpenProbability ?? 0) > 0.7;
+      (leftEyeOpenProbability ?? 0) > 0.7 &&
+      (rightEyeOpenProbability ?? 0) > 0.7;
 
   /// Whether both eyes are confidently closed.
   bool get eyesClosed =>
@@ -222,12 +223,29 @@ class FaceSnapshot {
   }
 }
 
+/// Which moment a [CapturedImage] documents.
+enum CaptureKind {
+  /// Neutral face, right before the first action.
+  reference,
+
+  /// The frame that best shows the action (eyes shut, deepest nod, start
+  /// of a held pose). See `LivenessConfig.captureAtPeak`.
+  peak,
+
+  /// The frame on which the action was judged complete.
+  completion,
+
+  /// A steady-rate frame from [CaptureType.frameSequence].
+  sequence,
+}
+
 /// One captured still image tied to a moment in the session.
 class CapturedImage {
   const CapturedImage({
     required this.bytes,
     required this.action,
     required this.timestampMs,
+    this.kind = CaptureKind.completion,
   });
 
   /// JPEG-encoded bytes.
@@ -237,6 +255,8 @@ class CapturedImage {
   final LivenessAction? action;
 
   final int timestampMs;
+
+  final CaptureKind kind;
 }
 
 /// Final output of a liveness session, handed to `onResult`.
@@ -312,8 +332,7 @@ class LivenessResult {
       ..writeln('  sessionId: $sessionId')
       ..writeln('  success: $success'
           '${failureReason == null ? '' : ' (${failureReason!.name})'}')
-      ..writeln(
-          '  confidence: ${(confidenceScore * 100).toStringAsFixed(1)}%')
+      ..writeln('  confidence: ${(confidenceScore * 100).toStringAsFixed(1)}%')
       ..writeln('  actions: ${completedActions.map((a) => a.name).join(' → ')}')
       ..writeln('  duration: ${duration.inMilliseconds} ms')
       ..writeln('  media: ${images.length} image(s), '
@@ -398,6 +417,7 @@ class LivenessConfig {
     this.failOnMultipleFaces = true,
     this.multipleFacesGrace = const Duration(milliseconds: 500),
     this.captureReferenceImage = true,
+    this.captureAtPeak = true,
     this.tuning = const DetectorTuning(),
     this.mirrorYaw = true,
     this.maxImageDimension = 720,
@@ -517,6 +537,13 @@ class LivenessConfig {
   /// Capture a neutral reference image right before the first action
   /// (only when [CaptureType.images] is enabled).
   final bool captureReferenceImage;
+
+  /// Take each action's photo at its peak (eyes shut for a blink, the
+  /// lowest point of a nod, the start of a held pose) rather than on the
+  /// frame where it completed. Photos are tagged [CaptureKind.peak]; when a
+  /// detector reports no peak, the completion frame is used
+  /// ([CaptureKind.completion]). Set false for the pre-0.5 behaviour.
+  final bool captureAtPeak;
 
   final DetectorTuning tuning;
 

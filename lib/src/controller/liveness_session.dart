@@ -23,6 +23,15 @@ class ActionStartedEvent extends LivenessEvent {
   final int index;
 }
 
+/// The detector reported [DetectorUpdate.isPeak]: this frame best shows
+/// [action]. May fire several times per action; the latest one wins.
+class ActionPeakEvent extends LivenessEvent {
+  const ActionPeakEvent(this.action, this.index, this.timestampMs);
+  final LivenessAction action;
+  final int index;
+  final int timestampMs;
+}
+
 class ActionCompletedEvent extends LivenessEvent {
   const ActionCompletedEvent(this.action, this.index);
   final LivenessAction action;
@@ -231,8 +240,7 @@ class LivenessSession {
         }
         // Within grace: freeze, but pause detector state.
         _detector?.reset();
-        _emitState(
-            current.copyWith(faceInPosition: false, guidance: guidance));
+        _emitState(current.copyWith(faceInPosition: false, guidance: guidance));
         return;
       }
       _emitState(current.copyWith(
@@ -297,6 +305,9 @@ class LivenessSession {
     final timeoutMs = config.actionTimeout.inMilliseconds;
 
     final update = detector.update(face);
+    if (update.isPeak) {
+      _emitEvent(ActionPeakEvent(detector.action, _actionIndex, timestampMs));
+    }
     if (update.completed) {
       final action = detector.action;
       _completed.add(action);
