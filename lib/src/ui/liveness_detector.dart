@@ -54,7 +54,19 @@ class LivenessDetector extends StatefulWidget {
   /// `key` to start a fresh session with a different config.
   final LivenessConfig config;
 
-  /// Called exactly once when the session ends (success, failure, or cancel).
+  /// Called exactly once when the session ends: success, failure, or
+  /// cancel — including when the widget is removed before the session
+  /// finished (route popped, system back).
+  ///
+  /// In that last case the result is `cancelled` with
+  /// `metadata['cancelledBy'] == 'dispose'`, it is delivered synchronously
+  /// from `dispose()` (not awaited), and **the widget's `BuildContext` is
+  /// already unmounted**. Guard navigation with `context.mounted`, e.g.
+  /// `if (context.mounted) Navigator.pop(context, result);`. Captures still
+  /// being encoded at that moment are not included.
+  ///
+  /// `metadata['cancelledBy']` is `'user'` (close button or controller),
+  /// `'lifecycle'` (app sent to background) or `'dispose'`.
   final FutureOr<void> Function(LivenessResult result) onResult;
 
   final LivenessTheme theme;
@@ -106,6 +118,9 @@ class _LivenessDetectorState extends State<LivenessDetector>
 
   bool _busy = false;
   bool _finished = false;
+  bool _resultDelivered = false;
+  LivenessResult? _builtResult;
+  String? _cancelledBy;
   Object? _lastFrame;
 
   /// The frame most recently handed to the session (i.e. what the
@@ -479,8 +494,27 @@ class _LivenessDetectorState extends State<LivenessDetector>
     // Wait for background JPEG encodes to drain (bounded).
     await Future.wait(_pendingEncodes)
         .timeout(const Duration(seconds: 5), onTimeout: () => const []);
-    _images.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
-    _frames.sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+
+    final result = _builtResult = _buildResult(success: success, reason: reason);
+
+    // Let the final UI state (success/failure) render briefly before
+    // handing off.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (_resultDelivered) return; // disposed meanwhile; already delivered
+    _resultDelivered = true;
+    await widget.onResult(result);
+  }
+
+  /// Snapshot of everything collected so far. Synchronous, so `dispose`
+  /// can use it.
+  LivenessResult _buildResult({
+    required bool success,
+    LivenessFailureReason? reason,
+  }) {
+    final images = List.of(_images)
+      ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
+    final frames = List.of(_frames)
+      ..sort((a, b) => a.timestampMs.compareTo(b.timestampMs));
 
     // Composite confidence: clean sessions on a real camera score ≥ 0.9.
     final completedRatio = widget.config.actions.isEmpty
@@ -493,12 +527,12 @@ class _LivenessDetectorState extends State<LivenessDetector>
     confidence -= _flashPenalty;
     confidence = confidence.clamp(0.0, 1.0);
 
-    final result = LivenessResult(
+    return LivenessResult(
       success: success,
       completedActions: _session.current.completedActions,
       failureReason: reason,
-      images: List.unmodifiable(_images),
-      frameSequence: List.unmodifiable(_frames),
+      images: List.unmodifiable(images),
+      frameSequence: List.unmodifiable(frames),
       videoPath: _videoPath,
       startedAt: _startedAt,
       finishedAt: DateTime.now(),
@@ -510,13 +544,10 @@ class _LivenessDetectorState extends State<LivenessDetector>
         ..._spoofGuard.metadata,
         'confidence_qualityViolations': _qualityViolations,
         'cameraMode': widget.config.cameraMode.name,
+        if (reason == LivenessFailureReason.cancelled)
+          'cancelledBy': _cancelledBy ?? 'user',
       },
     );
-
-    // Let the final UI state (success/failure) render briefly before
-    // handing off.
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (mounted) await widget.onResult(result);
   }
 
   /// ~2.6 s: 600 ms untinted baseline, then three ~650 ms color tints in a
@@ -545,12 +576,50 @@ class _LivenessDetectorState extends State<LivenessDetector>
     if (passed == false) _flashPenalty = 0.35;
   }
 
-  void _cancel() => _session.cancel();
+  void _cancel({String by = 'user'}) {
+    if (_finished || _session.isTerminal) return;
+    _cancelledBy = by;
+    _session.cancel();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused && !_finished) {
-      _session.cancel();
+      _cancel(by: 'lifecycle');
+    }
+  }
+
+  /// Delivers the result from `dispose()`: synchronously, never awaited,
+  /// and shielded so a throwing `onResult` can't break teardown.
+  void _deliverOnDispose() {
+    if (_resultDelivered) return;
+    _resultDelivered = true;
+    // A session that already ended keeps its real outcome (e.g. a success
+    // whose result hold was cut short); otherwise it's a cancel.
+    final state = _session.current;
+    final LivenessResult result;
+    if (_builtResult != null) {
+      result = _builtResult!;
+    } else if (state.phase == LivenessPhase.completed) {
+      result = _buildResult(success: true);
+    } else if (state.phase == LivenessPhase.failed) {
+      result = _buildResult(success: false, reason: state.failureReason);
+    } else {
+      _cancelledBy = 'dispose';
+      result = _buildResult(
+        success: false,
+        reason: LivenessFailureReason.cancelled,
+      );
+    }
+    try {
+      final pending = widget.onResult(result);
+      if (pending is Future<void>) {
+        pending.catchError((Object e, StackTrace st) {
+          widget.onError?.call(e, st);
+        });
+      }
+    } catch (e, st) {
+      widget.onError?.call(e, st);
     }
   }
 
@@ -558,6 +627,7 @@ class _LivenessDetectorState extends State<LivenessDetector>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _finished = true;
+    _deliverOnDispose();
     _ticker?.cancel();
     _flashTint.dispose();
     if (widget.config.boostScreenBrightness) {

@@ -64,10 +64,18 @@ LivenessDetector(
       // Send it to your server however you like — everything is in `result`.
       await myApi.submitLiveness(result);
     }
-    Navigator.pop(context, result);
+    // The screen may already be gone (see below), so check first.
+    if (context.mounted) Navigator.pop(context, result);
   },
 )
 ```
+
+> ⚠️ `onResult` is called exactly once — **even if the screen is closed
+> before the check finishes** (system back, route popped). In that case the
+> result is `cancelled` with `metadata['cancelledBy'] == 'dispose'`, and
+> the screen is already gone, so always guard navigation with
+> `context.mounted`. `cancelledBy` is `'user'` for the close button and
+> `'lifecycle'` when the app goes to the background.
 
 > 💡 Why `shuffleActions: true`? If actions always come in the same order,
 > someone could record a video of a person doing that exact sequence and

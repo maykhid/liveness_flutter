@@ -19,6 +19,9 @@
 - New `FaceGuidance.tooBright` value. Exhaustive `switch`es over
   `FaceGuidance` need a new case, and a custom `guidanceMessages` map needs
   an entry for it (or see the map-merging change below).
+- `onResult` can now run from `dispose()`, when the widget's context is
+  unmounted. Code that navigates in `onResult` must check `context.mounted`
+  first (the README example now does).
 
 ### Added
 
@@ -43,6 +46,8 @@
   `mirrorYaw` does for left/right.
 - `FaceGuidance.tooBright` with a default message, and
   `FrameQuality.issueFor(config)`.
+- `metadata['cancelledBy']` on cancelled results: `'user'`, `'lifecycle'` or
+  `'dispose'`.
 
 ### Fixed
 
@@ -79,6 +84,11 @@
   Flutter 3.44 / Dart 3.12; older SDKs keep resolving to 0.14.
 - Raising the screen brightness no longer delays camera start: the
   platform call now runs in the background.
+- `onResult` was never called when the detector was removed before the
+  session ended (route popped, system back), despite the "called exactly
+  once" promise. It is now delivered synchronously from `dispose()` as a
+  `cancelled` result, or with the real outcome if the session had already
+  ended. A throwing `onResult` there goes to `onError`.
 
 # 0.4.4
 
