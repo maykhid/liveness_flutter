@@ -669,7 +669,8 @@ class LivenessSessionState {
   /// Whether a single face is currently centered in the target oval.
   final bool faceInPosition;
 
-  /// Time remaining before the current action times out.
+  /// Time remaining before the current action times out. Only set while
+  /// [phase] is [LivenessPhase.performingAction]; null otherwise.
   final Duration? remaining;
 
   /// What's wrong with the current frame, if anything — drive specific user
@@ -683,6 +684,8 @@ class LivenessSessionState {
           .clamp(0, 1)
           .toDouble();
 
+  /// The `clear*` flags set the matching nullable field to null (passing
+  /// null for it keeps the current value).
   LivenessSessionState copyWith({
     LivenessPhase? phase,
     LivenessAction? currentAction,
@@ -694,17 +697,22 @@ class LivenessSessionState {
     bool? faceInPosition,
     Duration? remaining,
     FaceGuidance? guidance,
+    bool clearCurrentAction = false,
+    bool clearFailureReason = false,
+    bool clearRemaining = false,
   }) {
     return LivenessSessionState(
       phase: phase ?? this.phase,
-      currentAction: currentAction ?? this.currentAction,
+      currentAction:
+          clearCurrentAction ? null : currentAction ?? this.currentAction,
       currentActionIndex: currentActionIndex ?? this.currentActionIndex,
       totalActions: totalActions ?? this.totalActions,
       actionProgress: actionProgress ?? this.actionProgress,
       completedActions: completedActions ?? this.completedActions,
-      failureReason: failureReason ?? this.failureReason,
+      failureReason:
+          clearFailureReason ? null : failureReason ?? this.failureReason,
       faceInPosition: faceInPosition ?? this.faceInPosition,
-      remaining: remaining ?? this.remaining,
+      remaining: clearRemaining ? null : remaining ?? this.remaining,
       guidance: guidance ?? this.guidance,
     );
   }

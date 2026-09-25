@@ -373,7 +373,13 @@ class LivenessSession {
     _emitEvent(SessionFailedEvent(reason));
   }
 
-  void _emitState(LivenessSessionState next) => _state.value = next;
+  void _emitState(LivenessSessionState next) {
+    // `remaining` is the action countdown; it is meaningless elsewhere.
+    if (next.phase != LivenessPhase.performingAction && next.remaining != null) {
+      next = next.copyWith(clearRemaining: true);
+    }
+    _state.value = next;
+  }
 
   void _emitEvent(LivenessEvent event) {
     for (final l in List.of(_listeners)) {

@@ -33,6 +33,8 @@
 - `DetectorUpdate.isPeak`, `ActionPeakEvent`, `CapturedImage.kind`
   (`reference` | `peak` | `completion` | `sequence`) and
   `LivenessConfig.captureAtPeak` (default `true`).
+- `LivenessSessionState.copyWith` gains `clearCurrentAction`,
+  `clearFailureReason` and `clearRemaining`.
 
 ### Fixed
 
@@ -59,6 +61,8 @@
   current action, restarting a 400 ms pose hold. The detector is now paused
   and keeps its progress for pauses up to `faceLostGrace`; a longer quality
   pause restarts the action so the unseen gap never counts as held.
+- `state.remaining` kept a stale countdown after an action completed. It is
+  now only set while an action is being performed.
 
 # 0.4.4
 
