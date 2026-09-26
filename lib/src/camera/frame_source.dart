@@ -144,8 +144,10 @@ class CameraFrameSource implements LivenessFrameSource {
       onFrame(image);
     }
 
+    // Bounded: a camera whose release hangs must not block every later
+    // session.
     try {
-      await _released;
+      await _released.timeout(const Duration(seconds: 2));
     } catch (_) {}
     if (_disposed) return;
 

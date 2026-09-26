@@ -258,6 +258,9 @@ Pre-1.0, so there are breaking changes; each is listed below.
 - The declared SDK constraints (Dart 3.4 / Flutter 3.22) were lower than
   the dependencies allow: `camera` 0.12 needs Dart 3.10 / Flutter 3.38, and
   the code already used Flutter 3.27 APIs. `pubspec.yaml` now says so.
+- A new session waits at most 2 s for the previous camera to be released,
+  so a camera whose `dispose()` hangs can't block every later liveness
+  screen.
 
 # 0.4.4
 
