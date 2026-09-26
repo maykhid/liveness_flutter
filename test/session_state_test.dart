@@ -50,8 +50,10 @@ void main() {
       session.onFrame(
           faces: [f(100, smile: 0.9)], faceInPosition: true, timestampMs: 100);
       expect(session.current.remaining, isNotNull);
-      session.onFrame(
-          faces: [f(700, smile: 0.9)], faceInPosition: true, timestampMs: 700);
+      for (var t = 200; t <= 700; t += 100) {
+        session.onFrame(
+            faces: [f(t, smile: 0.9)], faceInPosition: true, timestampMs: t);
+      }
       expect(session.current.phase, LivenessPhase.awaitingNeutral);
       expect(session.current.remaining, isNull);
 

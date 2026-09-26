@@ -122,6 +122,12 @@ class LivenessSession {
   /// When the detector stopped being fed (face briefly lost, a second face,
   /// or a bad-quality frame). Its state is kept; see [_resumeDetector].
   int? _pausedSinceMs;
+
+  /// The current action's own clock (see [DetectorTuning.maxFrameGap]):
+  /// detectors see this instead of wall time, so unseen time can't count
+  /// toward a hold.
+  int _actionClockMs = 0;
+  int? _lastFedMs;
   bool _referenceEmitted = false;
   final List<LivenessAction> _completed = [];
   final Map<String, Object?> _metadata = {};
@@ -134,6 +140,8 @@ class LivenessSession {
 
   /// Call once the camera + detector pipeline is delivering frames.
   void start() {
+    // Already ended (e.g. cancelled while the camera was starting).
+    if (isTerminal) return;
     if (_challengeExpired) {
       _fail(LivenessFailureReason.challengeExpired);
       return;
@@ -256,6 +264,17 @@ class LivenessSession {
 
     if (_checkTimeouts(timestampMs)) return;
 
+    // Unusable frame (dark/blurry): freeze in place. It says nothing about
+    // faces, so it neither advances nor clears the face-lost and
+    // multiple-faces timers (clearing them let alternating dark frames
+    // hide a real problem). The action and session timeouts above still
+    // run, so a room that stays dark ends in a timeout, not a hang.
+    if (qualityHold) {
+      _pausedSinceMs ??= timestampMs;
+      _emitState(current.copyWith(guidance: guidance));
+      return;
+    }
+
     final relevant = relevantFaces(
       faces,
       minAreaRatio: config.tuning.secondaryFaceMinAreaRatio,
@@ -277,17 +296,6 @@ class LivenessSession {
     _multipleFacesSinceMs = null;
 
     final face = relevant.isEmpty ? null : relevant.first;
-
-    // Unusable frame (dark/blurry): freeze in place. Doesn't accumulate
-    // toward face-lost — a dim room shouldn't fail the session straight
-    // away, the user just needs to fix the light. The action and session
-    // timeouts above still run.
-    if (qualityHold) {
-      _faceLostSinceMs = null;
-      _pausedSinceMs ??= timestampMs;
-      _emitState(current.copyWith(guidance: guidance));
-      return;
-    }
 
     // Face-lost handling with grace period.
     if (face == null || !faceInPosition) {
@@ -346,6 +354,7 @@ class LivenessSession {
 
   void _beginAction(int timestampMs) {
     _pausedSinceMs = null;
+    _lastFedMs = null;
     final action = _actions[_actionIndex];
     _detector = ActionDetector.forAction(action, config.tuning);
     _actionStartMs = timestampMs;
@@ -381,7 +390,16 @@ class LivenessSession {
     final elapsed = timestampMs - startMs;
     final timeoutMs = config.actionTimeout.inMilliseconds;
 
-    final update = detector.update(face);
+    // Advance the action's clock by the gap since the last analysed frame,
+    // capped, so time the detector didn't see can't complete a hold.
+    final last = _lastFedMs;
+    _actionClockMs = last == null
+        ? timestampMs
+        : _actionClockMs +
+            min(timestampMs - last, config.tuning.maxFrameGap.inMilliseconds);
+    _lastFedMs = timestampMs;
+
+    final update = detector.update(_restamp(face, _actionClockMs));
     if (update.isPeak) {
       _emitEvent(ActionPeakEvent(detector.action, _actionIndex, timestampMs));
     }
@@ -423,6 +441,22 @@ class LivenessSession {
       remaining: Duration(milliseconds: timeoutMs - elapsed),
     ));
   }
+
+  static FaceSnapshot _restamp(FaceSnapshot f, int timestampMs) =>
+      FaceSnapshot(
+        timestampMs: timestampMs,
+        smileProbability: f.smileProbability,
+        leftEyeOpenProbability: f.leftEyeOpenProbability,
+        rightEyeOpenProbability: f.rightEyeOpenProbability,
+        headEulerAngleX: f.headEulerAngleX,
+        headEulerAngleY: f.headEulerAngleY,
+        headEulerAngleZ: f.headEulerAngleZ,
+        noseBase: f.noseBase,
+        mouthOpenRatio: f.mouthOpenRatio,
+        boundingBox: f.boundingBox,
+        trackingId: f.trackingId,
+        identitySignature: f.identitySignature,
+      );
 
   void _fail(LivenessFailureReason reason) {
     _emitState(current.copyWith(

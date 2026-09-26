@@ -38,10 +38,11 @@ void main() {
     session.onFrame(faces: [neutral(0)], faceInPosition: true, timestampMs: 0);
     expect(session.current.phase, LivenessPhase.performingAction);
 
-    session.onFrame(
-        faces: [smiling(100)], faceInPosition: true, timestampMs: 100);
-    session.onFrame(
-        faces: [smiling(700)], faceInPosition: true, timestampMs: 700);
+    // A held smile at the camera's usual ~10 fps.
+    for (var t = 100; t <= 700; t += 100) {
+      session.onFrame(
+          faces: [smiling(t)], faceInPosition: true, timestampMs: t);
+    }
 
     expect(session.current.phase, LivenessPhase.completed);
     expect(events, [
@@ -61,10 +62,11 @@ void main() {
     );
     session.start();
     session.onFrame(faces: [neutral(0)], faceInPosition: true, timestampMs: 0);
-    session.onFrame(
-        faces: [smiling(100)], faceInPosition: true, timestampMs: 100);
-    session.onFrame(
-        faces: [smiling(700)], faceInPosition: true, timestampMs: 700);
+    // A held smile at the camera's usual ~10 fps.
+    for (var t = 100; t <= 700; t += 100) {
+      session.onFrame(
+          faces: [smiling(t)], faceInPosition: true, timestampMs: t);
+    }
 
     expect(session.current.phase, LivenessPhase.awaitingNeutral);
 
@@ -170,7 +172,19 @@ void main() {
     expect(orders.length, greaterThan(1));
   });
 
-    test('cancel produces cancelled failure', () {
+    test('start() after a cancel keeps the session ended', () {
+    // Review finding: a cancel during camera startup was undone by the
+    // start() that followed.
+    final session = LivenessSession(
+      const LivenessConfig(actions: [LivenessAction.smile]),
+    );
+    session.cancel();
+    session.start();
+    expect(session.current.phase, LivenessPhase.failed);
+    expect(session.current.failureReason, LivenessFailureReason.cancelled);
+  });
+
+  test('cancel produces cancelled failure', () {
     final session = LivenessSession(
       const LivenessConfig(actions: [LivenessAction.smile]),
     );

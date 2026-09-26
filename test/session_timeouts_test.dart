@@ -75,23 +75,25 @@ void main() {
         ),
       )..start();
       session.onFrame(faces: [face(0)], faceInPosition: true, timestampMs: 0);
-      session.onFrame(
-          faces: [face(100, yaw: 40)], faceInPosition: true, timestampMs: 100);
-      session.onFrame(
-          faces: [face(600, yaw: 40)], faceInPosition: true, timestampMs: 600);
-      expect(session.current.phase, LivenessPhase.awaitingNeutral);
-
-      // Head stays turned.
-      for (var t = 700; t <= 10600; t += 100) {
+      // lookLeft held from 100 completes at 500.
+      for (var t = 100; t <= 500; t += 100) {
         session.onFrame(
             faces: [face(t, yaw: 40)], faceInPosition: true, timestampMs: t);
       }
       expect(session.current.phase, LivenessPhase.awaitingNeutral);
 
+      // Head stays turned for the full 10 s…
+      for (var t = 600; t <= 10500; t += 100) {
+        session.onFrame(
+            faces: [face(t, yaw: 40)], faceInPosition: true, timestampMs: t);
+      }
+      expect(session.current.phase, LivenessPhase.awaitingNeutral);
+
+      // …and one frame more ends it.
       session.onFrame(
-          faces: [face(10700, yaw: 40)],
+          faces: [face(10600, yaw: 40)],
           faceInPosition: true,
-          timestampMs: 10700);
+          timestampMs: 10600);
       expect(session.current.phase, LivenessPhase.failed);
       expect(
           session.current.failureReason, LivenessFailureReason.actionTimeout);

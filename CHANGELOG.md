@@ -166,6 +166,8 @@ https://github.com/maykhid/liveness_flutter/issues.
   fully branded KYC flow for a fictional fintech, and a separate test bench
   exposing every option, with a result page that runs the server checks
   from `doc/server_verification.md` against clearly labelled in-app fakes.
+- `DetectorTuning.maxFrameGap` (default 250 ms): the most one gap between
+  analysed frames can count toward a hold.
 
 ### Fixed
 
@@ -189,9 +191,15 @@ https://github.com/maykhid/liveness_flutter/issues.
   newest camera frame rather than the analysed one. Each action's photo now
   comes from its peak frame (eyes shut, deepest nod, start of a held pose).
 - A single missed face detection (or one blurry or dark frame) reset the
-  current action, restarting a 400 ms pose hold. The detector is now paused
-  and keeps its progress for pauses up to `faceLostGrace`; a longer quality
-  pause restarts the action so the unseen gap never counts as held.
+  current action, restarting a 400 ms pose hold. The detector now keeps
+  its progress through short gaps, but holds only count time it actually
+  saw: each gap between analysed frames adds at most
+  `DetectorTuning.maxFrameGap` (250 ms), so a lost face or a stalled
+  camera can't complete a pose on two frames. A quality pause longer than
+  `faceLostGrace` restarts the action.
+- Dark or blurry frames reset the face-lost and multiple-faces timers, so
+  alternating bad frames could stop `faceLost` or `multipleFaces` from
+  ever firing. Quality-held frames now leave those timers alone.
 - `state.remaining` kept a stale countdown after an action completed. It is
   now only set while an action is being performed.
 - Overexposed frames told the user to "Find better lighting"

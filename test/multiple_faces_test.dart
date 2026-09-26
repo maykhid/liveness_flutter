@@ -140,5 +140,24 @@ void main() {
         hasLength(1),
       );
     });
+
+    test('dark frames do not clear the multiple-faces timer', () {
+      final session = LivenessSession(
+        const LivenessConfig(actions: [LivenessAction.smile]),
+      )..start();
+      session.onFrame(
+          faces: [faceAt(0, user)], faceInPosition: true, timestampMs: 0);
+      for (var t = 100; t <= 1000; t += 100) {
+        final dark = t % 200 == 0;
+        session.onFrame(
+          faces: dark ? const [] : [faceAt(t, user), faceAt(t, similar)],
+          faceInPosition: !dark,
+          timestampMs: t,
+          qualityHold: dark,
+        );
+      }
+      expect(
+          session.current.failureReason, LivenessFailureReason.multipleFaces);
+    });
   });
 }

@@ -564,6 +564,7 @@ class DetectorTuning {
     this.secondaryFaceMinAreaRatio = 0.35,
     this.targetFillMin = 0.15,
     this.targetFillMax = 1.0,
+    this.maxFrameGap = const Duration(milliseconds: 250),
   });
 
   final double blinkClosedThreshold;
@@ -610,6 +611,13 @@ class DetectorTuning {
 
   /// See [targetFillMin].
   final double targetFillMax;
+
+  /// The most time one gap between analysed frames can add to an action's
+  /// own clock. Holds ([poseHold], [expressionHold], [eyesClosedHold]) only
+  /// count time the detector saw: when the face was lost, frames were too
+  /// dark, or the camera stalled, the gap counts for at most this much.
+  /// At the usual ~10 fps, gaps are ~100 ms, so normal holds are unaffected.
+  final Duration maxFrameGap;
 }
 
 /// Configuration for a liveness session.

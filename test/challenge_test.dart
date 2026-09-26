@@ -67,8 +67,12 @@ void main() {
         now: () => now,
       )..start();
       session.onFrame(faces: [f(0)], faceInPosition: true, timestampMs: 0);
-      session.onFrame(
-          faces: [f(100, smile: 0.9)], faceInPosition: true, timestampMs: 100);
+      // Smiling, not yet held long enough (500 ms)…
+      for (var t = 100; t <= 500; t += 100) {
+        session.onFrame(
+            faces: [f(t, smile: 0.9)], faceInPosition: true, timestampMs: t);
+      }
+      // …when the challenge expires.
       now = t0.add(const Duration(minutes: 10));
       session.onFrame(
           faces: [f(700, smile: 0.9)], faceInPosition: true, timestampMs: 700);
