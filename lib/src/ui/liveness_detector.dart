@@ -379,6 +379,15 @@ class _LivenessRunState extends State<_LivenessRun>
         },
       );
       if (!mounted) return;
+      if (_finished) {
+        // Cancelled while the camera was opening: its stop() ran before
+        // the camera existed, so stop it again now that it does.
+        try {
+          await _source.stop();
+        } catch (_) {}
+        widget.controller._runStarted(this);
+        return;
+      }
       _sourceReady = true;
       widget.controller._runStarted(this);
 
@@ -510,7 +519,7 @@ class _LivenessRunState extends State<_LivenessRun>
 
       final positionIssue = primary == null
           ? FaceGuidance.noFace
-          : relevant.length > 1
+          : relevant.length > 1 && config.failOnMultipleFaces
               ? FaceGuidance.multipleFaces
               : _positionIssueFor(primary);
 
@@ -844,26 +853,42 @@ class _LivenessRunState extends State<_LivenessRun>
   ) async {
     final attestor = _d.config.attestor;
     if (attestor == null) return result;
+    // Deliver exactly what was signed: captures that finish while the
+    // attestor runs are left out rather than making the payload differ.
     try {
       final token = await attestor
           .attest(result.attestationPayloadHash)
           .timeout(const Duration(seconds: 15));
-      return _buildResult(
-        success: success,
-        reason: reason,
-        attestation: token,
-        finishedAt: result.finishedAt,
-      );
+      return _copyResult(result, attestation: token);
     } catch (e, st) {
       _d.onError?.call(e, st);
-      _extraMetadata['attestationError'] = e.toString();
-      return _buildResult(
-        success: success,
-        reason: reason,
-        finishedAt: result.finishedAt,
+      return _copyResult(
+        result,
+        metadata: {'attestationError': e.toString()},
       );
     }
   }
+
+  static LivenessResult _copyResult(
+    LivenessResult r, {
+    String? attestation,
+    Map<String, Object?> metadata = const {},
+  }) =>
+      LivenessResult(
+        success: r.success,
+        completedActions: r.completedActions,
+        failureReason: r.failureReason,
+        images: r.images,
+        frameSequence: r.frameSequence,
+        videoPath: r.videoPath,
+        startedAt: r.startedAt,
+        finishedAt: r.finishedAt,
+        metadata: {...r.metadata, ...metadata},
+        confidenceScore: r.confidenceScore,
+        sessionId: r.sessionId,
+        nonce: r.nonce,
+        attestation: attestation ?? r.attestation,
+      );
 
   /// Snapshot of everything collected so far. Synchronous, so `dispose`
   /// can use it.
@@ -924,6 +949,7 @@ class _LivenessRunState extends State<_LivenessRun>
   /// samples. Result is a confidence penalty + metadata, never a hard fail.
   Future<void> _runFlashChallenge() async {
     if (_finished) return;
+    _flashPending = true;
     final challenge = FlashChallenge(
       allowedMisses: _d.config.flashAllowedMisses,
     );
@@ -941,14 +967,22 @@ class _LivenessRunState extends State<_LivenessRun>
         await Future<void>.delayed(const Duration(milliseconds: 650));
       }
     } finally {
-      _flashTint.value = null;
+      // After dispose the tint notifier is gone; the session is over.
+      if (mounted) _flashTint.value = null;
       _flashChallenge = null;
-      await _source.lockExposure(false);
+      if (mounted) await _source.lockExposure(false);
     }
+    if (!mounted) return;
     final passed = challenge.evaluate();
     _extraMetadata.addAll(challenge.metadataFor(passed));
     if (passed == false) _flashPenalty = 0.35;
+    _flashPending = false;
   }
+
+  /// True while the colour-flash challenge still has to run or finish. The
+  /// actions passed, but the anti-replay check didn't: leaving now must
+  /// not count as a pass.
+  bool _flashPending = false;
 
   void _cancel({String by = 'user'}) {
     if (_finished || _session.isTerminal) return;
@@ -980,6 +1014,13 @@ class _LivenessRunState extends State<_LivenessRun>
     final LivenessResult result;
     if (_builtResult != null) {
       result = _builtResult!;
+    } else if (state.phase == LivenessPhase.completed && _flashPending) {
+      _cancelledBy ??= 'dispose';
+      _extraMetadata['flashChallenge'] = 'interrupted';
+      result = _buildResult(
+        success: false,
+        reason: LivenessFailureReason.cancelled,
+      );
     } else if (state.phase == LivenessPhase.completed) {
       result = _buildResult(success: true);
     } else if (state.phase == LivenessPhase.failed) {

@@ -280,6 +280,20 @@ https://github.com/maykhid/liveness_flutter/issues.
 - Closing the screen while the camera was still starting could leave the
   camera (and torch) on. Startup now stops as soon as the screen is gone,
   and the camera is always released.
+- Leaving during the colour-flash challenge delivered `success: true`
+  without the anti-replay check ever being evaluated (and touched disposed
+  state). It is now a `cancelled` result with
+  `metadata['flashChallenge'] = 'interrupted'`.
+- A cancel while the camera was still starting was undone: the session came
+  back to `searchingFace` and the camera kept streaming. The session now
+  stays ended and the late-opened camera is stopped.
+- `failOnMultipleFaces: false` still blocked the user while a second face
+  was in view (the face never counted as in position). The largest face is
+  now used and the others are ignored, as documented.
+- With an attestor, a photo that finished encoding during attestation ended
+  up in the delivered result but not in the signed payload, so server-side
+  verification failed for a genuine user. The delivered result is now
+  exactly the one that was attested.
 
 # 0.4.4
 

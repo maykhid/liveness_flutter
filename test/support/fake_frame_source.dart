@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -36,6 +37,15 @@ class FakeFrameSource implements LivenessFrameSource {
   bool stopped = false;
   bool disposed = false;
   Object? startError;
+
+  /// When set, `start` waits for it (a camera that's slow to open).
+  Completer<void>? startGate;
+
+  /// How long each JPEG encode takes.
+  Duration encodeDelay = Duration.zero;
+
+  /// 'start', 'started', 'stop' in the order they happened.
+  final List<String> events = [];
   final List<int> encodedFrameIds = [];
 
   @override
@@ -49,10 +59,13 @@ class FakeFrameSource implements LivenessFrameSource {
     void Function(Object frame) onFrame, {
     required void Function(Object error, StackTrace stackTrace) onError,
   }) async {
+    events.add('start');
+    await startGate?.future;
     final error = startError;
     if (error != null) throw error;
     _onFrame = onFrame;
     started = true;
+    events.add('started');
   }
 
   /// Delivers one frame with [faces] to the widget.
@@ -89,7 +102,10 @@ class FakeFrameSource implements LivenessFrameSource {
   }) {
     final id = (frame as FakeFrame).id;
     encodedFrameIds.add(id);
-    return Future.value(Uint8List.fromList([0xFF, 0xD8, id & 0xFF]));
+    final bytes = Uint8List.fromList([0xFF, 0xD8, id & 0xFF]);
+    return encodeDelay == Duration.zero
+        ? Future.value(bytes)
+        : Future.delayed(encodeDelay, () => bytes);
   }
 
   /// RGB returned for flash-challenge samples; tests can script it.
@@ -111,6 +127,7 @@ class FakeFrameSource implements LivenessFrameSource {
 
   @override
   Future<String?> stop() async {
+    events.add('stop');
     stopped = true;
     return null;
   }
@@ -162,11 +179,17 @@ class FakeSourceHarness {
   /// Makes the next source's `start` throw this.
   Object? nextStartError;
 
+  /// Makes the next source's `start` wait for this.
+  Completer<void>? nextStartGate;
+
   void install() {
     current = null;
     nextStartError = null;
+    nextStartGate = null;
     debugLivenessFrameSourceFactory = (config) => current =
-        FakeFrameSource(config)..startError = nextStartError;
+        FakeFrameSource(config)
+          ..startError = nextStartError
+          ..startGate = nextStartGate;
   }
 
   void uninstall() => debugLivenessFrameSourceFactory = null;
