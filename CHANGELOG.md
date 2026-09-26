@@ -5,7 +5,9 @@ really is called exactly once, the on-screen oval now decides where the
 face must be, evidence photos show the action, and the anti-spoof pieces do
 what the README says. New hooks bind sessions to your server (challenges,
 image hashes, attestation) and let you plug in your own anti-spoof model.
-Pre-1.0, so there are breaking changes; each is listed below.
+The package is in beta: pre-1.0, so there are breaking changes; each is
+listed below. Issues from anyone are welcome at
+https://github.com/maykhid/liveness_flutter/issues.
 
 ### Breaking
 

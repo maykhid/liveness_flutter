@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green.svg)](#)
 [![No ML models](https://img.shields.io/badge/models-none%20to%20download-orange.svg)](#)
+[![Status: beta](https://img.shields.io/badge/status-beta-yellow.svg)](#-status-beta)
 
 *Blink. Smile. Turn left. Verified.* ✅
 
@@ -28,6 +29,19 @@ photos and/or video — and you send it **wherever you want**.
 
 Everything runs on the phone. **No cloud service. No license fees. No
 model downloads. No account.**
+
+## 🧪 Status: beta
+
+liveness_flutter is in **beta**. It's tested on real Android and iOS
+devices, but it's still evolving and the API may change before 1.0. Until
+then, a minor release (0.5 → 0.6) can include breaking changes; each one
+is listed under **Breaking** in the [CHANGELOG](CHANGELOG.md). Depend on
+`^0.5.0` and you'll only get compatible updates.
+
+**Anyone can [open an issue](https://github.com/maykhid/liveness_flutter/issues)**
+— bugs, a phone where detection misbehaves, confusing docs, or ideas. For
+detection problems, include your phone model, OS version, and what
+`showDebugOverlay: true` shows.
 
 ## ✨ Why this package?
 
@@ -664,7 +678,7 @@ off.
 
 <div align="center">
 
-**Found a bug? Have an idea?** Issues and PRs welcome. 🙌
+**Found a bug? Have an idea?** [Open an issue](https://github.com/maykhid/liveness_flutter/issues) — anyone can, and PRs are welcome too. 🙌
 
 Made with ❤️ for developers who'd rather not pay per verification.
 
