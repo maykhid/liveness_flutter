@@ -31,6 +31,7 @@ abstract final class Brand {
         backgroundColor: surface,
         foregroundColor: ink,
         elevation: 0,
+        scrolledUnderElevation: 0,
         centerTitle: true,
       ),
       filledButtonTheme: FilledButtonThemeData(

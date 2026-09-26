@@ -46,6 +46,41 @@ void main() {
     expect(find.widgetWithText(FilledButton, 'Try again'), findsOneWidget);
   });
 
+  testWidgets('the top bar sits under the notch, on one line',
+      (tester) async {
+    useNoCamera();
+    tester.view.physicalSize = const Size(1170, 2532); // 390 × 844
+    tester.view.devicePixelRatio = 3;
+    tester.view.padding = const FakeViewPadding(top: 141); // 47 pt notch
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app(const FaceCaptureScreen()));
+    await tester.pump();
+
+    final close = tester.getCenter(find.byIcon(Icons.close));
+    final title = tester.getCenter(find.text('Face check'));
+    final chip = tester.getCenter(find.text('Step 3 of 3'));
+    // Below the notch, within a standard 56 pt toolbar.
+    expect(close.dy, inInclusiveRange(47, 47 + 56));
+    // One line.
+    expect(title.dy, closeTo(close.dy, 0.5));
+    expect(chip.dy, closeTo(close.dy, 0.5));
+    await advance(tester); // let the session's timers finish
+  });
+
+  testWidgets('the title is centred on the screen', (tester) async {
+    // The test font draws every letter as a full square, making the title
+    // and chip about twice their real width, too wide to centre on a
+    // phone-sized screen. A wider one tests the centring itself.
+    useNoCamera();
+    tester.view.physicalSize = const Size(1800, 2532); // 600 × 844
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(app(const FaceCaptureScreen()));
+    await tester.pump();
+    expect(tester.getCenter(find.text('Face check')).dx, closeTo(300, 0.5));
+    await advance(tester);
+  });
+
   testWidgets('a passing check unlocks Tier 2', (tester) async {
     await tester.pumpWidget(
         app(VerifyingScreen(result: result(success: true))));

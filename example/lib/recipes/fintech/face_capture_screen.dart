@@ -46,87 +46,81 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Brand.surface,
-      body: LayoutBuilder(builder: (context, constraints) {
-        // One circle, in pixels for painting and normalised for detection.
-        final size = constraints.biggest;
-        final diameter = size.shortestSide * 0.7;
-        final circle = Rect.fromCenter(
-          center: Offset(size.width / 2, size.height * 0.4),
-          width: diameter,
-          height: diameter,
-        );
-        final targetRegion = Rect.fromLTRB(
-          circle.left / size.width,
-          circle.top / size.height,
-          circle.right / size.width,
-          circle.bottom / size.height,
-        );
+      // A real AppBar: sits below the notch and centres the title across
+      // the full width, whatever the widths of the close button and chip.
+      appBar: AppBar(
+        centerTitle: true,
+        leading: IconButton(
+          tooltip: 'Close',
+          icon: const Icon(Icons.close, color: Brand.ink),
+          // Leaving cancels the session; the package still reports it.
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: const Text(
+          'Face check',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            color: Brand.ink,
+          ),
+        ),
+        actions: const [_StepChip()],
+      ),
+      // The body starts below the AppBar, so the circle and the detection
+      // zone are both measured in the same area.
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          // One circle, in pixels for painting and normalised for detection.
+          final size = constraints.biggest;
+          final diameter = size.shortestSide * 0.7;
+          final circle = Rect.fromCenter(
+            center: Offset(size.width / 2, size.height * 0.4),
+            width: diameter,
+            height: diameter,
+          );
+          final targetRegion = Rect.fromLTRB(
+            circle.left / size.width,
+            circle.top / size.height,
+            circle.right / size.width,
+            circle.bottom / size.height,
+          );
 
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            LivenessDetector(
-              controller: _controller,
-              config: Brand.livenessConfig,
-              theme: Brand.livenessTheme,
-              showCloseButton: false,
-              targetRegion: targetRegion,
-              overlayBuilder: (context, state) =>
-                  _Overlay(circle: circle, state: state),
-              instructionBuilder: (context, state) =>
-                  _InstructionCard(state: state),
-              instructionAlignment: const Alignment(0, 0.74),
-              permissionDeniedBuilder: (context, retry) =>
-                  _PermissionCard(onRetry: retry),
-              onResult: _onResult,
-            ),
-            const SafeArea(child: _TopBar()),
-          ],
-        );
-      }),
+          return LivenessDetector(
+            controller: _controller,
+            config: Brand.livenessConfig,
+            theme: Brand.livenessTheme,
+            showCloseButton: false,
+            targetRegion: targetRegion,
+            overlayBuilder: (context, state) =>
+                _Overlay(circle: circle, state: state),
+            instructionBuilder: (context, state) =>
+                _InstructionCard(state: state),
+            instructionAlignment: const Alignment(0, 0.74),
+            permissionDeniedBuilder: (context, retry) =>
+                _PermissionCard(onRetry: retry),
+            onResult: _onResult,
+          );
+        },
+      ),
     );
   }
 }
 
-class _TopBar extends StatelessWidget {
-  const _TopBar();
+class _StepChip extends StatelessWidget {
+  const _StepChip();
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 56,
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Close',
-            icon: const Icon(Icons.close, color: Brand.ink),
-            // Leaving cancels the session; the package still reports it.
-            onPressed: () => Navigator.maybePop(context),
-          ),
-          const Expanded(
-            child: Text(
-              'Face check',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: Brand.ink,
-              ),
-            ),
-          ),
-          Container(
-            margin: const EdgeInsets.only(right: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: Brand.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Text(
-              'Step 3 of 3',
-              style: TextStyle(color: Brand.primary, fontSize: 12),
-            ),
-          ),
-        ],
+    return Container(
+      margin: const EdgeInsets.only(right: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Brand.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: const Text(
+        'Step 3 of 3',
+        style: TextStyle(color: Brand.primary, fontSize: 12),
       ),
     );
   }
@@ -143,7 +137,9 @@ class _Overlay extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        CustomPaint(painter: _CirclePainter(circle: circle, state: state)),
+        CustomPaint(
+          painter: _CirclePainter(circle: circle, state: state),
+        ),
         if (state.phase == LivenessPhase.completed)
           Positioned(
             left: circle.center.dx - 28,
@@ -213,12 +209,23 @@ class _CirclePainter extends CustomPainter {
       final start = -math.pi / 2 + gap / 2 + i * (sweep + gap);
       final done = i < state.completedActions.length;
       canvas.drawArc(
-          ring, start, sweep, false, stroke(done ? Brand.success : Brand.track));
-      final current = i == state.currentActionIndex &&
+        ring,
+        start,
+        sweep,
+        false,
+        stroke(done ? Brand.success : Brand.track),
+      );
+      final current =
+          i == state.currentActionIndex &&
           state.phase == LivenessPhase.performingAction;
       if (current && state.actionProgress > 0) {
-        canvas.drawArc(ring, start, sweep * state.actionProgress.clamp(0, 1),
-            false, stroke(Brand.primary));
+        canvas.drawArc(
+          ring,
+          start,
+          sweep * state.actionProgress.clamp(0, 1),
+          false,
+          stroke(Brand.primary),
+        );
       }
     }
   }
@@ -236,36 +243,40 @@ class _InstructionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final guidance = Brand.guidanceFor(state.guidance);
-    final (IconData icon, String title, String? subtitle) = switch (state.phase) {
+    final (
+      IconData icon,
+      String title,
+      String? subtitle,
+    ) = switch (state.phase) {
       LivenessPhase.initializing => (
-          Icons.photo_camera_outlined,
-          'Opening your camera…',
-          null,
-        ),
+        Icons.photo_camera_outlined,
+        'Opening your camera…',
+        null,
+      ),
       LivenessPhase.searchingFace || LivenessPhase.centeringFace => (
-          Icons.face_outlined,
-          'Fit your face in the circle',
-          guidance ?? 'Hold your phone at eye level',
-        ),
+        Icons.face_outlined,
+        'Fit your face in the circle',
+        guidance ?? 'Hold your phone at eye level',
+      ),
       LivenessPhase.awaitingNeutral => (
-          Icons.thumb_up_alt_outlined,
-          'Nice! Now look straight ahead',
-          null,
-        ),
+        Icons.thumb_up_alt_outlined,
+        'Nice! Now look straight ahead',
+        null,
+      ),
       LivenessPhase.performingAction => () {
-          final i = Brand.instructionFor(state.currentAction!);
-          return (i.icon, i.title, guidance ?? i.hint);
-        }(),
+        final i = Brand.instructionFor(state.currentAction!);
+        return (i.icon, i.title, guidance ?? i.hint);
+      }(),
       LivenessPhase.completed => (
-          Icons.verified_outlined,
-          'All done',
-          'Hang on a moment…',
-        ),
+        Icons.verified_outlined,
+        'All done',
+        'Hang on a moment…',
+      ),
       LivenessPhase.failed => (
-          Icons.error_outline,
-          Brand.failureHelp(state.failureReason).title,
-          null,
-        ),
+        Icons.error_outline,
+        Brand.failureHelp(state.failureReason).title,
+        null,
+      ),
     };
     final remaining = state.remaining;
 
@@ -280,7 +291,10 @@ class _InstructionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: const [
             BoxShadow(
-                color: Color(0x14000000), blurRadius: 24, offset: Offset(0, 8)),
+              color: Color(0x14000000),
+              blurRadius: 24,
+              offset: Offset(0, 8),
+            ),
           ],
         ),
         child: Row(
@@ -300,8 +314,7 @@ class _InstructionCard extends StatelessWidget {
                     Text(
                       'Step ${state.currentActionIndex + 1} of '
                       '${state.actionPlan.length}',
-                      style: const TextStyle(
-                          color: Brand.muted, fontSize: 12),
+                      style: const TextStyle(color: Brand.muted, fontSize: 12),
                     ),
                   Text(
                     title,
@@ -354,8 +367,11 @@ class _PermissionCard extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.no_photography_outlined,
-              color: Brand.primary, size: 36),
+          const Icon(
+            Icons.no_photography_outlined,
+            color: Brand.primary,
+            size: 36,
+          ),
           const SizedBox(height: 8),
           const Text(
             'Allow camera access',
