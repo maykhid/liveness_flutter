@@ -1,18 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:liveness_flutter_example/main.dart';
+import 'package:liveness_flutter_example/test_bench/main.dart';
 
 void main() {
   testWidgets('home page renders its settings and start button',
       (tester) async {
-    await tester.pumpWidget(const ExampleApp());
+    await tester.pumpWidget(const TestBenchApp());
     expect(find.text('Start liveness check'), findsOneWidget);
     expect(find.text('Presets'), findsOneWidget);
     expect(find.text('Actions'), findsOneWidget);
   });
 
   testWidgets('presets apply without errors', (tester) async {
-    await tester.pumpWidget(const ExampleApp());
+    await tester.pumpWidget(const TestBenchApp());
     for (final name in [
       'Quick test',
       'Server-bound (KYC)',
@@ -27,7 +27,7 @@ void main() {
   });
 
   testWidgets('every settings group opens without errors', (tester) async {
-    await tester.pumpWidget(const ExampleApp());
+    await tester.pumpWidget(const TestBenchApp());
     for (final group in [
       'Timing',
       'Capture',

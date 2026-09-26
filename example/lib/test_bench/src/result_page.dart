@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 
-import 'demo_security.dart';
+import 'insecure_fakes.dart';
 import 'media_pages.dart';
 
 /// Everything the demo keeps about one finished session.

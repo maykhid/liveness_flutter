@@ -1,9 +1,39 @@
-// Custom UI demo: fully restyle the liveness screen with overlayBuilder +
-// instructionBuilder, and make detection follow the custom window with
-// targetRegion.
+// Recipe: your own look with overlayBuilder + instructionBuilder.
+//
+// Run: flutter run -t lib/recipes/custom_ui.dart
+//
+// Two things to notice:
+// 1. Both builders get the live LivenessSessionState and rebuild on every
+//    change — draw whatever you like from it.
+// 2. `targetRegion` tells detection where YOUR window is. Without it, the
+//    face would still have to be inside the default oval you replaced.
 
 import 'package:flutter/material.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
+
+void main() => runApp(const MaterialApp(home: CustomUiPage()));
+
+class CustomUiPage extends StatelessWidget {
+  const CustomUiPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: LivenessDetector(
+        config: const LivenessConfig(
+          actions: [LivenessAction.blink, LivenessAction.smile],
+        ),
+        // The window is a rounded rectangle, so detect with that shape.
+        theme: const LivenessTheme(ovalShape: TargetShape.roundedRect),
+        overlayBuilder: customOverlay,
+        instructionBuilder: customInstructions,
+        targetRegion: customWindow,
+        onResult: (result) => debugPrint(result.toString()),
+      ),
+    );
+  }
+}
 
 /// The custom window, normalised to the screen (0..1). The same rect is
 /// painted below and passed as `LivenessDetector.targetRegion`, so the

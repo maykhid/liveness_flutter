@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'custom_ui.dart';
+import '../../recipes/custom_ui.dart' show customInstructions, customOverlay, customWindow;
 import 'demo_settings.dart';
 
 /// Called for every session result, including ones delivered from

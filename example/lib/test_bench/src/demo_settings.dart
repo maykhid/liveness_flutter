@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 
-import 'demo_security.dart';
+import 'insecure_fakes.dart';
 
 /// Whether (and how) the demo asks its fake server for a challenge.
 enum ChallengeMode {

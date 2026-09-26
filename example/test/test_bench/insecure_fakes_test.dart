@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
-import 'package:liveness_flutter_example/src/demo_security.dart';
+import 'package:liveness_flutter_example/test_bench/src/insecure_fakes.dart';
 
 void main() {
   final server = FakeChallengeServer.instance;

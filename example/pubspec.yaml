@@ -11,7 +11,9 @@ dependencies:
     sdk: flutter
   liveness_flutter:
     path: ../
-  # Only for the demo's simulated server checks (hashing uploaded files).
+  # recipes/server_bound.dart: fetching a challenge from your backend.
+  http: ^1.2.0
+  # test_bench: the simulated server checks hash the uploaded files.
   crypto: ^3.0.3
   permission_handler: ^11.3.0
   video_player: ^2.9.0
@@ -20,6 +22,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  camera_platform_interface: ^2.14.0
 
 flutter:
   uses-material-design: true

@@ -4,22 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'src/demo_security.dart';
+import 'src/insecure_fakes.dart';
 import 'src/demo_settings.dart';
 import 'src/liveness_screen.dart';
 import 'src/result_page.dart';
 
-void main() => runApp(const ExampleApp());
+/// The test bench: every option of the package behind a settings screen,
+/// for trying the package on a device. Not a starting point — see
+/// lib/main.dart and lib/recipes/ for that.
+///
+/// Run: flutter run -t lib/test_bench/main.dart
+void main() => runApp(const TestBenchApp());
 
 final _messenger = GlobalKey<ScaffoldMessengerState>();
 
-class ExampleApp extends StatelessWidget {
-  const ExampleApp({super.key});
+class TestBenchApp extends StatelessWidget {
+  const TestBenchApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Liveness Example',
+      title: 'Liveness test bench',
       scaffoldMessengerKey: _messenger,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
@@ -140,7 +145,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('liveness_flutter example')),
+      appBar: AppBar(title: const Text('liveness_flutter test bench')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [

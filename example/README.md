@@ -1,36 +1,33 @@
-# liveness_flutter example
+# liveness_flutter examples
 
-Runnable demo: pick actions, choose capture modes, run a liveness session,
-view captured images, and optionally upload to your API.
+Start small, then pick the recipe you need. Each file runs on its own with
+`flutter run -t <file>` (on a **physical device**; simulators have no
+usable front camera).
 
-## What's in it
+| File | What it shows |
+|---|---|
+| [`lib/main.dart`](lib/main.dart) | **Start here.** The smallest useful integration: about 90 lines. |
+| [`lib/recipes/custom_ui.dart`](lib/recipes/custom_ui.dart) | Your own overlay and instructions, with `targetRegion` so detection follows your window. |
+| [`lib/recipes/controller.dart`](lib/recipes/controller.dart) | Your own Cancel / Try again buttons and live state via `LivenessController`. |
+| [`lib/recipes/server_bound.dart`](lib/recipes/server_bound.dart) | A challenge from your backend, then upload with error handling. Pass `--dart-define=BACKEND_URL=https://…`. |
+| [`lib/recipes/fintech/`](lib/recipes/fintech/main.dart) | A fully branded KYC flow for a fictional fintech ("AcmePay"): account home → intro and tips → restyled face check → verifying → success or failure help. Brand colours and wording live in `brand.dart`. |
+| [`lib/test_bench/main.dart`](lib/test_bench/main.dart) | Every option behind a settings screen, for trying the package on a device. Not a starting point. |
 
-A test bench for every option in the package:
+```bash
+flutter run                                   # lib/main.dart
+flutter run -t lib/recipes/fintech/main.dart  # the branded flow
+flutter run -t lib/test_bench/main.dart       # the test bench
+```
 
-- **Presets**: Quick test, Server-bound (KYC), Everything on, Accessible.
-- **Settings** grouped by area: actions (with `randomActionCount` and a
-  warning when there's no motion action), timeouts, capture, security
-  (server challenge, attestation, anti-spoof analyzer, colour flash,
-  static-feed guard, face-change failure), camera and detection
-  (`mirrorYaw`, `invertPitch`, debug overlay), look and feel (target
-  shape and size, custom UI with `targetRegion`, light theme, partial
-  French strings, haptics), permissions and upload.
-- **On the liveness screen**: a live event log of every callback, and
-  optionally a `LivenessController` bar (cancel, restart, plan, time left)
-  in place of the close button, plus an in-screen "camera access is off"
-  page.
-- **Result page**: outcome and reason, confidence, the **simulated server
-  checks** from `doc/server_verification.md` (nonce, action order, media
-  hashes, attestation), anti-spoof signals, photos labelled with their
-  kind and timestamp, frame-sequence and video playback, the event log,
-  the raw `toJson()`, and upload with progress and error reporting.
-- **What to test**: a checklist on the home screen, including a button
-  that starts a session with an invalid config.
+### About the test bench
 
-The "server", attestor and anti-spoof model are in-app fakes
-(`lib/src/demo_security.dart`) so everything works offline. **None of
-them is secure**: in a real app they live on your backend or come from
-Play Integrity / App Attest and a trained model.
+Presets, grouped settings for every option, a live log of every callback,
+a `LivenessController` bar, and a result page that runs the checks from
+`doc/server_verification.md` (nonce, action order, media hashes,
+attestation). Its "server", attestor and anti-spoof model are in-app fakes
+in `lib/test_bench/src/insecure_fakes.dart` so everything works offline.
+**None of them is secure**: in a real app they live on your backend or come
+from Play Integrity / App Attest and a trained model.
 
 ## Run it
 
@@ -84,8 +81,9 @@ Use a **physical device** — simulators/emulators have no usable front camera.
 
 ## Testing the upload
 
-Set the endpoint on the home screen, run a session, and tap **Upload** on
-the result page. Any server that accepts multipart POSTs works. Quick
+In the test bench, set the endpoint under **Upload**, run a session, and
+tap **Upload** on the result page (or use `lib/recipes/server_bound.dart`
+with `BACKEND_URL`). Any server that accepts multipart POSTs works. Quick
 local test:
 
 ```bash
