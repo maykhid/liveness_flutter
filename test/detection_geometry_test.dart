@@ -1,5 +1,5 @@
-import 'dart:ui';
 
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:liveness_flutter/liveness_flutter.dart';
 import 'package:liveness_flutter/src/camera/detection_geometry.dart';
@@ -116,6 +116,32 @@ void main() {
           });
         }
       }
+    }
+
+    // The preview is drawn with BoxFit.cover in whatever space the detector
+    // gets; detection must crop the camera image exactly the same way.
+    for (final view in const [
+      Size(390, 844), // full screen
+      Size(390, 700), // under an app bar
+      Size(800, 1000), // tablet
+    ]) {
+      test('agrees with BoxFit.cover in a $view view', () {
+        const image = Size(720, 1280);
+        final g = DetectionGeometry(
+          viewSize: view,
+          faceSpaceSize: image,
+          rotationDegrees: 0,
+          mirrored: false,
+        );
+        final fitted = applyBoxFit(BoxFit.cover, image, view);
+        final visible = Alignment.center.inscribe(fitted.source, Offset.zero & image);
+        final topLeft = g.viewToFace(Offset.zero);
+        final bottomRight = g.viewToFace(const Offset(1, 1));
+        expect(topLeft.dx * image.width, closeTo(visible.left, 0.01));
+        expect(topLeft.dy * image.height, closeTo(visible.top, 0.01));
+        expect(bottomRight.dx * image.width, closeTo(visible.right, 0.01));
+        expect(bottomRight.dy * image.height, closeTo(visible.bottom, 0.01));
+      });
     }
 
     test('front vs back differ only by the mirror', () {

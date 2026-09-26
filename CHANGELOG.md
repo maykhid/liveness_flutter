@@ -260,9 +260,18 @@ https://github.com/maykhid/liveness_flutter/issues.
 - The declared SDK constraints (Dart 3.4 / Flutter 3.22) were lower than
   the dependencies allow: `camera` 0.12 needs Dart 3.10 / Flutter 3.38, and
   the code already used Flutter 3.27 APIs. `pubspec.yaml` now says so.
-- A new session waits at most 2 s for the previous camera to be released,
-  so a camera whose `dispose()` hangs can't block every later liveness
-  screen.
+- The camera preview was scaled to the whole screen rather than the space
+  the detector was given, and wasn't clipped. With the detector under an
+  app bar, the drawn target and the detection zone pointed at different
+  parts of the face. The preview now cover-fits its own space and is
+  clipped, matching the detection maths.
+- A restart (or quickly opening a new liveness screen) could open the new
+  camera while the old one was still closing ("camera in use" on Android).
+  Each camera now waits for the previous one's release (at most 2 s, so a
+  hanging release can't block later sessions).
+- Closing the screen while the camera was still starting could leave the
+  camera (and torch) on. Startup now stops as soon as the screen is gone,
+  and the camera is always released.
 
 # 0.4.4
 

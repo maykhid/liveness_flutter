@@ -99,11 +99,17 @@ class CameraFrameSource implements LivenessFrameSource {
   final LivenessConfig config;
   final ResolutionPreset resolution;
 
-  /// Completes when the most recently disposed source has released the
-  /// camera. A new source waits for it, so a restart (or quickly pushing a
-  /// new liveness screen) never tries to open a camera that is still
-  /// closing.
-  static Future<void> _released = Future.value();
+  /// The most recently started source. A new source waits for this one's
+  /// release before opening the camera, so a restart (or quickly pushing a
+  /// new liveness screen) never opens a camera that is still closing —
+  /// even though the old run is disposed *after* the new one starts.
+  static CameraFrameSource? _latest;
+
+  /// Completes once this source has released its camera (or never had one).
+  final Completer<void> _released = Completer<void>();
+
+  /// The in-flight [start], so [dispose] can wait for it to wind down.
+  Future<void>? _starting;
 
   final Stopwatch _clock = Stopwatch()..start();
   CameraController? _controller;
@@ -138,17 +144,29 @@ class CameraFrameSource implements LivenessFrameSource {
   Future<void> start(
     void Function(Object frame) onFrame, {
     required void Function(Object error, StackTrace stackTrace) onError,
+  }) =>
+      _starting = _start(onFrame, onError: onError);
+
+  /// After every `await`, [_disposed] is checked: once disposed, startup
+  /// stops and [dispose] (which waits for this) closes whatever was opened.
+  Future<void> _start(
+    void Function(Object frame) onFrame, {
+    required void Function(Object error, StackTrace stackTrace) onError,
   }) async {
     void handle(CameraImage image) {
       _framesSeen++;
       onFrame(image);
     }
 
-    // Bounded: a camera whose release hangs must not block every later
-    // session.
-    try {
-      await _released.timeout(const Duration(seconds: 2));
-    } catch (_) {}
+    final previous = _latest;
+    _latest = this;
+    if (previous != null && previous != this) {
+      // Bounded: a camera whose release hangs (or a previous screen that
+      // is still open) must not block this one forever.
+      try {
+        await previous._released.future.timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
     if (_disposed) return;
 
     final wantedDirection =
@@ -159,17 +177,15 @@ class CameraFrameSource implements LivenessFrameSource {
       orElse: () => cameras.first,
     );
 
-    final controller = CameraController(
+    if (_disposed) return;
+    final controller = _controller = CameraController(
       camera,
       resolution,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.nv21, // ignored on iOS
     );
     await controller.initialize();
-    if (_disposed) {
-      await controller.dispose();
-      return;
-    }
+    if (_disposed) return;
 
     // Assisted mode: the screen faces the operator, so the torch does
     // the face-lighting job instead. Best-effort (not all devices).
@@ -177,9 +193,9 @@ class CameraFrameSource implements LivenessFrameSource {
       try {
         await controller.setFlashMode(FlashMode.torch);
       } catch (_) {}
+      if (_disposed) return;
     }
 
-    _controller = controller;
     _camera = camera;
     _converter = FrameConverter(camera: camera, controller: controller);
     // The back camera isn't mirrored like the front one, so the
@@ -339,25 +355,32 @@ class CameraFrameSource implements LivenessFrameSource {
   }
 
   @override
-  Future<void> dispose() {
+  Future<void> dispose() async {
+    if (_disposed) return _released.future;
     _disposed = true;
     _videoWatchdog?.cancel();
-    final controller = _controller;
-    final detector = _faceDetector;
+    // Let an in-flight start reach its next check and stop, so everything
+    // it opened is known before releasing it.
+    try {
+      await _starting;
+    } catch (_) {}
     // Errors are swallowed: nobody awaits a dispose, and a failed release
     // must not block the next source from trying.
-    return _released = () async {
-      try {
-        await controller?.dispose();
-      } catch (_) {}
-      try {
-        await detector?.close();
-      } catch (_) {}
-    }();
+    try {
+      await _controller?.dispose();
+    } catch (_) {}
+    try {
+      await _faceDetector?.close();
+    } catch (_) {}
+    if (_latest == this) _latest = null;
+    _released.complete();
   }
 }
 
-/// Cover-fits the camera preview to the available space.
+/// Cover-fits the camera preview to the space this widget is given (not
+/// the whole screen) and clips the overflow. `DetectionGeometry` maps the
+/// on-screen target into the camera image with the same cover-fit, so what
+/// is drawn and what is detected line up even under an app bar.
 class _FullScreenPreview extends StatelessWidget {
   const _FullScreenPreview({required this.controller});
 
@@ -365,13 +388,20 @@ class _FullScreenPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    final previewRatio = controller.value.aspectRatio;
-    // Camera aspect ratio is width/height in landscape sensor terms.
-    final scale = size.aspectRatio * previewRatio;
-    return Transform.scale(
-      scale: scale < 1 ? 1 / scale : scale,
-      child: Center(child: CameraPreview(controller)),
+    // Width / height of the sensor image, landscape (e.g. 1280 / 720).
+    final sensorAspect = controller.value.aspectRatio;
+    final portrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+    final shownAspect = portrait ? 1 / sensorAspect : sensorAspect;
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: 1000 * shownAspect,
+          height: 1000,
+          child: CameraPreview(controller),
+        ),
+      ),
     );
   }
 }
