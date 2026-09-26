@@ -1,0 +1,51 @@
+{
+  // Pick one in Run and Debug (⇧⌘D), then press F5. Use a physical device:
+  // simulators and emulators have no usable front camera.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Fintech KYC flow (branded)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/recipes/fintech/main.dart"
+    },
+    {
+      "name": "Minimal example",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/main.dart"
+    },
+    {
+      "name": "Recipe: custom UI",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/recipes/custom_ui.dart"
+    },
+    {
+      "name": "Recipe: controller",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/recipes/controller.dart"
+    },
+    {
+      "name": "Recipe: server-bound",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/recipes/server_bound.dart",
+      // Put your backend here to use it; empty = local stand-in, no upload.
+      "toolArgs": ["--dart-define=BACKEND_URL="]
+    },
+    {
+      "name": "Test bench (every option)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/example",
+      "program": "${workspaceFolder}/example/lib/test_bench/main.dart"
+    }
+  ]
+}
