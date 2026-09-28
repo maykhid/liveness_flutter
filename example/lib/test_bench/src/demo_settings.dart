@@ -57,6 +57,7 @@ class DemoSettings {
   bool flashChallenge = false;
   int flashAllowedMisses = 0;
   bool failOnFaceChange = false;
+  bool failOnMultipleFaces = true;
   PadMode pad = PadMode.off;
   ChallengeMode challenge = ChallengeMode.off;
   bool attestor = false;
@@ -118,6 +119,7 @@ class DemoSettings {
         enableFlashChallenge: flashChallenge,
         flashAllowedMisses: flashAllowedMisses,
         failOnFaceChange: failOnFaceChange,
+        failOnMultipleFaces: failOnMultipleFaces,
         frameAnalyzers: [
           if (pad != PadMode.off)
             DemoPadAnalyzer(score: pad == PadMode.passes ? 0.05 : 0.9),

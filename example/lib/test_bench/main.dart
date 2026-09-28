@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'src/insecure_fakes.dart';
 import 'src/demo_settings.dart';
+import 'src/device_checks.dart';
 import 'src/liveness_screen.dart';
 import 'src/result_page.dart';
 
@@ -46,11 +47,37 @@ class _HomePageState extends State<HomePage> {
   DemoSettings _s = DemoSettings();
   final _endpoint = TextEditingController();
   final List<SessionRecord> _history = [];
+  final _checkLog = DeviceCheckLog();
 
   @override
   void dispose() {
     _endpoint.dispose();
+    _checkLog.dispose();
     super.dispose();
+  }
+
+  /// Used by the device checks: run one session with [settings] (keeping
+  /// the upload settings), through the normal flow and session list.
+  Future<void> _runWith(DemoSettings settings) async {
+    setState(() {
+      settings
+        ..endpoint = _s.endpoint
+        ..uploadRetries = _s.uploadRetries;
+      _s = settings;
+    });
+    await _start();
+  }
+
+  void _openDeviceChecks() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DeviceChecksPage(
+          log: _checkLog,
+          runWithSettings: _runWith,
+        ),
+      ),
+    );
   }
 
   void _applyPreset(DemoSettings preset, String name) {
@@ -149,6 +176,17 @@ class _HomePageState extends State<HomePage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.checklist),
+              title: const Text('Device checks'),
+              subtitle: const Text('Guided scenarios to try on a real phone, '
+                  'with pass / fail and a report to copy'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _openDeviceChecks,
+            ),
+          ),
+          const SizedBox(height: 8),
           Text('Presets', style: text.titleMedium),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 4, children: [
@@ -372,6 +410,13 @@ class _HomePageState extends State<HomePage> {
             subtitle: const Text('Fails on frozen / injected camera feeds'),
             value: s.replayGuard,
             onChanged: (v) => set(() => s.replayGuard = v),
+          ),
+          SwitchListTile(
+            title: const Text('Fail when a second face stays in view'),
+            subtitle: const Text('failOnMultipleFaces (off: the largest face '
+                'is used, others ignored)'),
+            value: s.failOnMultipleFaces,
+            onChanged: (v) => set(() => s.failOnMultipleFaces = v),
           ),
           SwitchListTile(
             title: const Text('Fail when the face changes'),

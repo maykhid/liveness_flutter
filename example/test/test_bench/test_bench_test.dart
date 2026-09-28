@@ -38,6 +38,9 @@ void main() {
       'Upload',
     ]) {
       await tester.scrollUntilVisible(find.text(group), 200);
+      // Fully on screen, so the tap can't land on the bottom Start button.
+      await tester.ensureVisible(find.text(group));
+      await tester.pumpAndSettle();
       await tester.tap(find.text(group));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: group);

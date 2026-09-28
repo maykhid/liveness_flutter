@@ -21,7 +21,12 @@ flutter run -t lib/test_bench/main.dart       # the test bench
 
 ### About the test bench
 
-Presets, grouped settings for every option, a live log of every callback,
+**Device checks** (the first card on its home screen) walk you through
+the scenarios worth trying on a real phone: each check sets the test bench
+up for you, says what to do and what should happen, and records pass /
+fail. Copy the report and attach it to an issue.
+
+It also has presets, grouped settings for every option, a live log of every callback,
 a `LivenessController` bar, and a result page that runs the checks from
 `doc/server_verification.md` (nonce, action order, media hashes,
 attestation). Its "server", attestor and anti-spoof model are in-app fakes

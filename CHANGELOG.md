@@ -164,7 +164,8 @@ https://github.com/maykhid/liveness_flutter/issues.
 - Reworked examples: a minimal `lib/main.dart` (about 90 lines), focused
   recipes (custom UI, controller, server-bound session with upload), a
   fully branded KYC flow for a fictional fintech, and a separate test bench
-  exposing every option, with a result page that runs the server checks
+  exposing every option, with guided device checks (pass / fail and a
+  copyable report), with a result page that runs the server checks
   from `doc/server_verification.md` against clearly labelled in-app fakes.
 - `DetectorTuning.maxFrameGap` (default 250 ms): the most one gap between
   analysed frames can count toward a hold.
