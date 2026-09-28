@@ -12,10 +12,6 @@
 
 *Blink. Smile. Turn left. Verified.* ✅
 
-<img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" width="280" alt="A branded account-upgrade flow: account home, intro, a face check with nod and blink steps, then verified"/>
-
-<sub>The <a href="#-example-a-fully-branded-kyc-flow">branded fintech example</a>, running on an iPhone.</sub>
-
 </div>
 
 ---
@@ -235,6 +231,14 @@ shows how far customisation goes: a complete "upgrade your account"
 verification flow, the way a mobile bank or fintech app would ship it,
 built for a fictional brand ("AcmePay"). None of the package's default UI
 is visible — only its detection.
+
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" width="280" alt="A branded account-upgrade flow: account home, intro, a face check with nod and blink steps, then verified"/>
+
+<sub>The full flow on an iPhone.</sub>
+
+</div>
 
 1. **Account home** — balance card, current tier, "Upgrade to Tier 2".
 2. **Intro** — where the user is in the upgrade (phone ✓, BVN ✓, face
