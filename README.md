@@ -12,8 +12,18 @@
 
 *Blink. Smile. Turn left. Verified.* ✅
 
-<!-- DEMO: two GIFs side by side go here — "Out of the box" (the minimal
-example; recording pending) and "Fully branded" (screenshots/fintech_demo.gif). -->
+<table>
+  <tr>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/default_demo.gif" width="240" alt="The default screen: tap Verify, blink, turn left and smile inside an oval, then Passed with 100% confidence"/><br/>
+      <sub><b>Out of the box</b> — about 10 lines of code</sub>
+    </td>
+    <td align="center">
+      <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" width="240" alt="A fully branded account-upgrade flow: account home, intro, a face check in a circle with nod and blink steps, then verified"/><br/>
+      <sub><b>Fully branded</b> — <a href="#-example-a-fully-branded-kyc-flow">your design</a></sub>
+    </td>
+  </tr>
+</table>
 
 </div>
 
