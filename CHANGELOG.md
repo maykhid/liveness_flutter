@@ -157,10 +157,11 @@ https://github.com/maykhid/liveness_flutter/issues.
   `cameraPermission` errors) with its own failure text,
   `LivenessSession.permissionDenied()`, and
   `LivenessDetector.permissionDeniedBuilder` (with a `retry` callback).
-- GitHub Actions CI: `flutter analyze` and `flutter test` for the package,
-  plus `flutter analyze` for the example, on pushes to `main` and on pull
-  requests. Widget tests now drive `LivenessDetector` through a fake camera
-  (225 tests in total).
+- GitHub Actions CI: `flutter analyze` and `flutter test` for the package
+  and the example, on pushes to `main` and on pull requests. Widget tests
+  drive `LivenessDetector` through a fake camera, and the camera lifecycle
+  is tested against a fake camera plugin (241 package tests, 38 example
+  tests).
 - Reworked examples: a minimal `lib/main.dart` (about 90 lines), focused
   recipes (custom UI, controller, server-bound session with upload), a
   fully branded KYC flow for a fictional fintech, and a separate test bench
