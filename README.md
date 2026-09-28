@@ -12,43 +12,77 @@
 
 *Blink. Smile. Turn left. Verified.* ✅
 
+<!-- DEMO: two GIFs side by side go here — "Out of the box" (the minimal
+example; recording pending) and "Fully branded" (screenshots/fintech_demo.gif). -->
+
 </div>
 
----
+> 🧪 **Beta** — tested on real Android and iOS devices; the API may still
+> change before 1.0 ([details](#-status-beta)). Anyone can
+> [open an issue](https://github.com/maykhid/liveness_flutter/issues).
 
-You give it a list of actions (blink, smile, turn left…). It shows the
-camera, guides the user through each action, and checks a real live person
-performed them. When it's done you get one result object — optionally with
-photos and/or video — and you send it **wherever you want**.
+Add a face liveness check to your Flutter app in a few lines. The user
+blinks, smiles or turns their head when asked; the package checks a live
+person did it, then hands you the result — and the photos, if you want
+them — to send **wherever you want**.
+
+```dart
+LivenessDetector(
+  config: const LivenessConfig(
+    actions: [LivenessAction.blink, LivenessAction.smile, LivenessAction.lookLeft],
+    shuffleActions: true,          // a new order every time
+    capture: {CaptureType.images}, // photos your server can check
+  ),
+  onResult: (result) {
+    if (result.success) sendToYourServer(result);
+  },
+)
+```
 
 Everything runs on the phone. **No cloud service. No license fees. No
 model downloads. No account.**
 
-## 🧪 Status: beta
-
-liveness_flutter is in **beta**. It's tested on real Android and iOS
-devices, but it's still evolving and the API may change before 1.0. Until
-then, a minor release (0.5 → 0.6) can include breaking changes; each one
-is listed under **Breaking** in the [CHANGELOG](CHANGELOG.md). Depend on
-`^0.5.0` and you'll only get compatible updates.
-
-**Anyone can [open an issue](https://github.com/maykhid/liveness_flutter/issues)**
-— bugs, a phone where detection misbehaves, confusing docs, or ideas. For
-detection problems, include your phone model, OS version, and what
-`showDebugOverlay: true` shows.
+**Requirements:** Flutter 3.38+ · Android 7.0+ (API 24) · iOS 15.5+
 
 ## ✨ Why this package?
 
 | | |
 |---|---|
-| 🎯 **13 challenge actions** | blink, smile, fullTeethSmile, nod, look left/right/up/down, tilt left/right, eyes closed, open mouth, draw-a-circle-with-your-nose |
-| 🎲 **Anti-replay** | random action order (and optionally a random pick of actions) per session, so a pre-recorded video can't follow the script |
-| 🕵️ **Anti-spoof, zero ML** | static-feed guard (catches frozen or injected camera feeds), micro-motion analysis, frame-quality gates, opt-in color-flash challenge, plus hooks for server challenges, attestation and your own anti-spoof model |
-| 📸 **Evidence capture** | a photo at the peak of each action, full video, or a works-everywhere frame sequence — your server verifies, not just the phone |
-| 🔌 **Any backend** | `onResult` hands you everything; built-in multipart uploader with progress, errors and retries, or bring dio/S3/Firebase/anything |
-| 🎨 **Fully yours** | theme every color and string (localizable), or replace whole UI layers with your own widgets — see the [branded fintech example](#-example-a-fully-branded-kyc-flow) |
-| 🧑‍🤝‍🧑 **Assisted mode** | agent points the back camera at the customer — torch lighting, auto-flipped left/right |
-| 🪶 **Featherlight** | pure Dart + Google ML Kit. No TensorFlow, no 20 MB downloads, minSdk 24 |
+| 🎯 **Proves a live person is there** | The user does random actions — blink, smile, turn, nod, 13 to choose from — in a new order every time, so a photo or a pre-recorded video can't follow along. |
+| 🕵️ **Catches common tricks on the phone** | Frozen or injected camera feeds, an unnaturally still "face", a second or swapped face, bad lighting — plus an optional screen-flash test against replayed videos. No ML model to download. |
+| 📸 **Gives your server the evidence** | A photo at the peak of each action (eyes shut for a blink), or video, with hashes and an optional server-issued challenge, so your backend can verify instead of trusting the phone. |
+| 🎨 **Looks like your app** | Theme every color and word, or replace the screen with your own design — see the [branded fintech example](#-example-a-fully-branded-kyc-flow). |
+| 🪶 **Free and light** | Pure Dart plus Google's on-device ML Kit. No per-check fees, no account, no server of ours. |
+
+## 🤔 Is this right for you?
+
+**A great fit for** sign-up and onboarding gates, confirming it's really
+the user before a sensitive action, marketplace and gig-worker checks, and
+KYC flows where your backend also reviews the photos.
+
+**Pair it with server checks for** anything regulated or with money on
+the line. The phone's verdict alone can be tampered with: follow the
+[server verification guide](doc/server_verification.md) and review the
+photos server-side (face match, presentation-attack detection).
+
+**Not the right tool if** you need *certified* liveness — for example, a
+passed ISO/IEC 30107-3 presentation-attack evaluation such as iBeta's —
+or protection against sophisticated masks and deepfakes. That takes a
+trained anti-spoof model and usually a paid provider. This package can
+[plug such a model in](#-bind-sessions-to-your-server-recommended-for-kyc)
+but doesn't ship one.
+
+## ⚙️ How it works
+
+<img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/how_it_works.png" width="720" alt="Camera, then ML Kit finds the face, then actions and checks, then onResult on the phone (offline); you send the result to your server, which verifies and decides"/>
+
+1. The camera streams frames, and Google's ML Kit finds the face — on the
+   phone, offline.
+2. The package asks for each action in turn and checks it was really done,
+   while watching for frozen feeds, a second face and poor light.
+3. `onResult` gives you one `LivenessResult`: pass or fail, a confidence
+   score, and the photos if you asked for them.
+4. You send it to your server, which can verify it before trusting it.
 
 ## 🗺️ Pick your path
 
@@ -56,9 +90,10 @@ detection problems, include your phone model, OS version, and what
 |---|---|
 | Add a working liveness check to your app | **[Simple setup](#-simple-setup)** — about 10 minutes |
 | See every example, or run one | [Examples](#-examples) |
-| Make it look like your app (colours, text, your own screens) | [Make it look like your app](#-make-it-look-like-your-app) and the [fintech example](#-example-a-fully-branded-kyc-flow) |
+| Make it look like your app (colors, text, your own screens) | [Make it look like your app](#-make-it-look-like-your-app) and the [fintech example](#-example-a-fully-branded-kyc-flow) |
 | Use it for KYC or anything with real consequences | [Bind sessions to your server](#-bind-sessions-to-your-server-recommended-for-kyc) |
 | Have an agent verify someone else | [Assisted mode](#-assisted-mode-verifying-someone-else) |
+| Quick answers (offline? app size? masks?) | [FAQ](#-faq) |
 | Know the limits before shipping | [Honest notes](#-honest-notes--read-before-shipping) |
 
 ---
@@ -162,7 +197,7 @@ The essentials of `LivenessResult`:
   than one face, static/injected input suspected, camera access denied,
   user cancelled…)
 - `confidenceScore` — 0 to 1. A clean run on a real camera scores 0.9+.
-- `images` — the photos, each labelled with its action and `kind`
+- `images` — the photos, each labeled with its action and `kind`
   (`reference`, or `peak`: the moment the action was clearest, e.g. eyes
   shut for a blink)
 - `sessionId` — a unique audit ID (e.g. `LV-018F3A2B9C4E-D7E31F08`)
@@ -227,7 +262,7 @@ generate them.)
 ## 🏦 Example: a fully branded KYC flow
 
 [`example/lib/recipes/fintech/`](example/lib/recipes/fintech/main.dart)
-shows how far customisation goes: a complete "upgrade your account"
+shows how far customization goes: a complete "upgrade your account"
 verification flow, the way a mobile bank or fintech app would ship it,
 built for a fictional brand ("AcmePay"). None of the package's default UI
 is visible — only its detection.
@@ -259,10 +294,10 @@ cd example
 flutter run -t lib/recipes/fintech/main.dart
 ```
 
-**Make it yours:** everything brand-specific — name, colours, wording,
+**Make it yours:** everything brand-specific — name, colors, wording,
 which actions it asks for — is in
 [`brand.dart`](example/lib/recipes/fintech/brand.dart). Change `primary`
-to your colour and hot reload. The "Verifying" step simulates your
+to your color and hot reload. The "Verifying" step simulates your
 backend's approval: replace `_serverApproves` in `outcome_screens.dart`
 with your upload and your server's decision.
 
@@ -277,7 +312,7 @@ Independent topics — read the ones you need.
 *You need this if* the default dark oval and white text don't match your
 design.
 
-**Theme and text** (no custom widgets): `LivenessTheme` sets colours,
+**Theme and text** (no custom widgets): `LivenessTheme` sets colors,
 borders, text styles, the target's size, position and shape (oval, circle
 or rounded rectangle — this is also where the face must be), the close
 button, and **every piece of text** through `LivenessStrings`:
@@ -316,7 +351,7 @@ like `closeIconColor` and `resultHoldDuration`.
 | `failureReason` | why it failed |
 
 **If you draw your own window, tell detection where it is** with
-`targetRegion` (normalised to the widget, e.g.
+`targetRegion` (normalized to the widget, e.g.
 `Rect.fromLTWH(0.15, 0.2, 0.7, 0.5)`); otherwise the theme's oval still
 decides where the face must be. Working code:
 [custom UI recipe](example/lib/recipes/custom_ui.dart) and the
@@ -403,181 +438,52 @@ land in `metadata['analyzers']['pad-v2']` and lower `confidenceScore` by
 `timeout` (default 60 s); set `maxRetries` to retry network errors,
 timeouts and 5xx with exponential backoff (4xx is never retried).
 
-## 📸 Photos, video, and "frame sequence" — which do I pick?
+## 📸 Photos, video, and "frame sequence"
 
 *You need this if* you want more evidence than one photo per action.
 
-**Capturing nothing is the default.** With an empty `capture`,
-`result.images` and `result.frameSequence` come back empty and
-`videoPath` is null. Nothing is encoded, kept in memory, or written to
-disk. You still get the verdict: `success`, `completedActions`,
-`confidenceScore`, `sessionId`, and `metadata` — a few hundred bytes.
+Nothing is captured unless you ask. Choose `CaptureType.images` (a photo
+at the peak of each action — the best default), `CaptureType.video` (a real
+video file; reliable on iPhones, device-dependent on Android), or
+`CaptureType.frameSequence` (several photos a second; works on every
+phone). For KYC, capture at least images so your server has something to
+verify.
 
-The trade-off: with no captured media, your server has nothing to
-independently verify — you're fully trusting the on-device result. Fine
-for low-stakes flows (gating a selfie upload); for KYC or anything with
-real consequences, capture at least `{CaptureType.images}`.
-
-| You want | Use | Notes |
-|---|---|---|
-| A photo of each completed action | `CaptureType.images` | Smallest uploads. Works everywhere. **Best default.** |
-| A real video file of the session | `CaptureType.video` | Great on iPhones. On many Android phones the camera can't record and detect at the same time — see below. |
-| Something video-like that works on every phone | `CaptureType.frameSequence` | Several photos per second for the whole session. A list of photos, not a video file — but played back they look like one. |
-
-<details>
-<summary>🤖 <b>The Android video problem, in plain words</b> (click to expand)</summary>
-
-Detecting your face and recording a video both need the camera at the same
-time. iPhones handle that fine. Many Android phones can't — and there's no
-official way to ask a phone in advance. So this package gives you three
-tools:
-
-1. `LivenessCapabilities.supportsVideoCapture()` — call it once when your
-   app starts (takes 2–3 seconds, remembers the answer). It quietly tries
-   recording and tells you `true`/`false`:
-
-   ```dart
-   final canRecord = await LivenessCapabilities.supportsVideoCapture();
-   final capture = canRecord
-       ? {CaptureType.images, CaptureType.video}
-       : {CaptureType.images, CaptureType.frameSequence};
-   ```
-
-2. If you skip that and video fails mid-session anyway, the check **doesn't
-   break** — it quietly continues without video and marks
-   `result.metadata['videoUnavailable'] = true` so you know.
-
-3. Frame sequence as the works-everywhere alternative. If your server wants
-   a real video file from those photos, one command turns them into an MP4:
-
-   ```bash
-   ffmpeg -framerate 8 -pattern_type glob -i 'frame_*.jpg' \
-     -c:v libx264 -pix_fmt yuv420p session.mp4
-   ```
-
-</details>
-
-**Media size & cleanup:**
-
-- **Photo size**: `maxImageDimension` (default 720 px longest side) and
-  `jpegQuality` (default 85; lower = smaller files).
-- **Video size**: `cameraResolution` on the `LivenessDetector` widget.
-- **Frame rate**: `frameSequenceFps` (default 8, max 15) and
-  `frameSequenceMaxFrames` (default 300) cap memory. Encoding runs in
-  background isolates — capture never stalls detection.
-- **Cleanup**: photos live only in memory — gone when you're done with the
-  result. The **video is a real file** and is *not* deleted automatically:
-  upload or copy it in `onResult`, then delete it yourself or set
-  `autoDeleteVideo: true` to remove it when the camera screen closes.
+**[Capture guide →](doc/capture_and_media.md)** — choosing between them,
+the Android video problem, and media size and cleanup settings.
 
 ## 🌈 Stop video replays: the color-flash challenge
 
 *You need this if* you worry about someone playing a video of a real
-person to the camera — the hardest cheap attack on any action-based check,
-because the actions in the video were real when recorded.
+person to the camera — the hardest cheap attack on any action-based check.
 
-`enableFlashChallenge: true` adds a defense: right after the actions
-succeed, the screen flashes a short color sequence (red/green/blue, in a
-**random order each session**, ~2.5 seconds, "Hold still…"). A real face
-is lit by the phone's screen, so the camera sees each color reflected on
-the skin. A replayed video was recorded before this session's random order
-existed — its "face" doesn't reflect the right colors at the right times.
+`enableFlashChallenge: true` flashes red, green and blue in a random order
+after the actions. A real face reflects each color; a replayed video can't
+know the order. It depends on lighting (strong indoors, weak in daylight),
+so a failure lowers `confidenceScore` instead of rejecting the user.
 
-```dart
-LivenessConfig(
-  actions: [...],
-  shuffleActions: true,
-  enableFlashChallenge: true,
-)
-```
-
-**It's a soft signal, on purpose — and lighting is why.** The trick
-depends on the phone screen being a meaningful light source on the face:
-
-| Environment | What to expect |
-|---|---|
-| 🌙 Dim / evening indoor | Strong signal — reflections clearly measurable |
-| 🏠 Normal indoor lighting | Good signal — reliable for most users |
-| 🏢 Bright office / large windows | Weak — real faces may score `'inconclusive'` or `'failed'` |
-| ☀️ Outdoors in daylight | Little to no signal — results not meaningful |
-
-**How it decides.** Only pixels inside the detected face are sampled
-(background doesn't reflect the screen), the first 150 ms of each colour
-is skipped while the display and camera catch up, and auto-exposure is
-locked for the duration where the device allows it. Each colour must
-raise its own channel clearly above the frame-to-frame noise measured
-before the flash, both against that baseline and against the other
-colours. By default all three colours must pass
-(`flashAllowedMisses: 0`). In simulation, pure camera noise passes 0 times
-in 5,000 runs, where the pre-0.5 rule passed about 1 in 20. White balance
-can't be locked through the camera plugin, so strongly tinted light can
-still skew it.
-
-Other weakeners: phone held far from the face, very low screen brightness,
-strongly colored ambient light. To help, the package **raises the screen
-to full brightness automatically** during the session and restores it
-afterward (app window only; opt out with `boostScreenBrightness: false`).
-
-A failed challenge lowers `confidenceScore` by 0.35 and sets
-`metadata['flashChallenge'] = 'failed'` — it never rejects the user by
-itself. **Treat a failure as "review this one", not "this is fraud."**
-Log the metadata for a few weeks and learn your real users' pass rate
-before enforcing anything. Bonus: the flash moment is captured in your
-video and frame sequence — a real face visibly changes color, which your
-server can check too.
+**[Flash challenge guide →](doc/flash_challenge.md)** — what to expect in
+each environment, how it decides, and how to use the result.
 
 ## 🧑‍🤝‍🧑 Assisted mode: verifying someone else
 
 *You need this if* a bank agent or field officer holds the phone and
-verifies **another person** — common in branch onboarding and doorstep
-KYC:
+verifies **another person** — common in branch onboarding and doorstep KYC.
 
-```dart
-LivenessConfig(
-  actions: [...],
-  cameraMode: LivenessCameraMode.assisted,
-)
-```
+`cameraMode: LivenessCameraMode.assisted` uses the back camera and the
+torch. The operator reads each instruction out loud, "left" and "right"
+mean the subject's, the flash challenge is skipped, and
+`metadata['cameraMode']` tells your backend which mode was used.
 
-**Understand what assisted mode means before using it:**
-
-- The **back camera** is used, pointed at the subject. The **operator**
-  watches the screen and must **read each instruction out loud** ("please
-  blink", "turn your head left") — the subject cannot see the screen.
-- "Left" and "right" always mean the *subject's* left/right; detection
-  signs are flipped automatically for the unmirrored back camera.
-- The **device torch turns on** to light the subject's face (the screen,
-  which normally does that job, faces the operator). Opt out with
-  `assistedTorchEnabled: false`. Skipped on devices without a torch.
-- The **color-flash challenge is automatically skipped** (the screen's
-  colors can't reach the subject's face):
-  `metadata['flashChallenge'] = 'skippedAssistedMode'`. Static-feed guard,
-  micro-motion, and quality gates still run.
-- `metadata['cameraMode']` tells your backend which mode was used — decide
-  whether assisted sessions need extra review, since the operator (not the
-  subject) controls the device.
+**[Assisted mode guide →](doc/assisted_mode.md)** — read it before using
+this mode.
 
 ## 📦 Everything in the result
 
-`LivenessResult`, in full:
-
-- `success`, `failureReason` — the verdict and why. Cancelled results say
-  who in `metadata['cancelledBy']`.
-- `confidenceScore` — 0 to 1. Duplicate frames, a frozen head, many
-  bad-quality frames, a failed flash challenge or anti-spoof model scores
-  pull it down. Raw counters are in `metadata` under `confidence_*` and
-  `identity_*` keys.
-- `sessionId` — unique audit ID.
-- `nonce` / `attestation` — the server challenge's nonce and the
-  attestor's token, when you use them.
-- `completedActions` — which actions, in the order performed.
-- `images` — the photos, each with `action`, `kind`, `timestampMs` and a
-  `sha256Hex`.
-- `frameSequence` — the steady-stream photos, each with a timestamp.
-- `videoPath` — where the video file is, if you recorded one.
-- `metadata` — extras like how long each action took.
-- `toJson()` / `toString()` — a JSON-safe summary (no media bytes) and a
-  readable log block.
+Besides the essentials in [step 3](#3-read-the-result), a result carries
+the server challenge's `nonce`, the attestor's token, every capture's
+SHA-256, the frame sequence, the video path and detailed `metadata`.
+**[Full field reference →](doc/result_reference.md)**
 
 ## 🔧 Developer tools
 
@@ -601,6 +507,30 @@ LivenessConfig(
   and runs the server-side checks on each result.
 
 ---
+
+## ❓ FAQ
+
+**Does it work offline?** Yes. Face detection is Google's on-device ML
+Kit, and nothing is sent anywhere unless your code sends it.
+
+**Do I need a Firebase project or a paid ML Kit plan?** No. ML Kit's
+on-device face detection is free and needs no account or project.
+
+**Does it detect masks or deepfakes?** Not reliably on its own. The
+actions, the static-feed guard and the flash challenge stop the cheap
+attacks (photos, frozen feeds, many replayed videos); masks and deepfakes
+need a trained anti-spoof model, which you can plug in with
+`frameAnalyzers`, and server-side review.
+
+**How much does it add to my app?** Mostly ML Kit's face-detection model,
+which ships inside your app. Check the real number for your build with
+`flutter build apk --analyze-size` (or `ipa` on iOS).
+
+**Does it store or upload anything?** No. Photos are kept in memory until
+`onResult`; the video (if you record one) is a temporary file. Where the
+result goes is entirely up to your code.
+
+**Web or desktop?** Not yet — Android and iOS only.
 
 ## 📖 Honest notes — read before shipping
 
@@ -671,10 +601,23 @@ with a frozen face box (a re-encoded still injected as a camera) lower the
 confidence score. Micro-motion flags unnaturally still sessions the same
 way. **None of it detects a photo, screen or video held up to a real
 camera**: the real camera adds real noise and the hand adds real motion.
-That's what the actions, the colour flash, and server-side review of the
+That's what the actions, the color flash, and server-side review of the
 captured media are for. If the guard ever misfires on a device (it
 shouldn't — real sensors are noisy), `enableReplayGuard: false` turns it
 off.
+
+## 🧪 Status: beta
+
+liveness_flutter is in **beta**. It's tested on real Android and iOS
+devices, but it's still evolving and the API may change before 1.0. Until
+then, a minor release (0.5 → 0.6) can include breaking changes; each one
+is listed under **Breaking** in the [CHANGELOG](CHANGELOG.md). Depend on
+`^0.5.0` and you'll only get compatible updates.
+
+**Anyone can [open an issue](https://github.com/maykhid/liveness_flutter/issues)**
+— bugs, a phone where detection misbehaves, confusing docs, or ideas. For
+detection problems, include your phone model, OS version, and what
+`showDebugOverlay: true` shows.
 
 ---
 

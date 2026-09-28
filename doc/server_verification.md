@@ -128,7 +128,7 @@ of the camera. That's what these are for:
 - **Presentation-attack detection**: run a server-side PAD model on the
   photos or frames to catch screens, prints and masks held up to a real
   camera. The on-device replay guard only catches static or injected
-  feeds, and the colour-flash challenge is a soft signal that fails in
+  feeds, and the color-flash challenge is a soft signal that fails in
   daylight.
 - **Review signals**: `confidenceScore`, `metadata.confidence_*`,
   `metadata.flashChallenge` and `metadata.cameraMode`. Treat low scores as
