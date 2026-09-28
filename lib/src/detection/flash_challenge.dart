@@ -17,65 +17,112 @@ import 'package:camera/camera.dart';
 /// challenge therefore lowers `confidenceScore` (and is reported in
 /// `metadata`) rather than failing the session.
 class FlashChallenge {
-  FlashChallenge({Random? random})
-      : colors = List.of(_channels)..shuffle(random ?? Random.secure());
+  FlashChallenge({
+    Random? random,
+    this.allowedMisses = 0,
+    this.k = 3,
+    this.settle = const Duration(milliseconds: 150),
+    this.minDelta = 0.004,
+  }) : colors = List.of(_channels)..shuffle(random ?? Random.secure());
 
   static const _channels = [Channel.red, Channel.green, Channel.blue];
 
   /// Randomized per session.
   final List<Channel> colors;
 
+  /// Colour phases that may fail while the challenge still passes.
+  final int allowedMisses;
+
+  /// How many standard errors the expected channel must rise by.
+  final double k;
+
+  /// Samples this soon after a phase starts are dropped: the display and
+  /// the camera both need a moment to show the new colour.
+  final Duration settle;
+
+  /// Absolute floor on the required chromaticity rise, so a perfectly
+  /// steady (or synthetic) baseline can't make the bar zero.
+  final double minDelta;
+
+  int _phase = -1;
+  int? _phaseStartMs;
+
   /// -1 = baseline (no tint), 0.. = index into [colors].
-  int phase = -1;
+  int get phase => _phase;
+
+  /// Starts [phase] at [timestampMs] (same clock as [addSample]).
+  void beginPhase(int phase, int timestampMs) {
+    _phase = phase;
+    _phaseStartMs = timestampMs;
+  }
 
   final Map<int, List<List<double>>> _samples = {};
 
-  /// Feed one frame's mean center-region RGB (0–255 each).
-  void addSample(List<double> rgb) =>
-      (_samples[phase] ??= []).add(rgb);
-
-  /// Chromaticity (channel share of total) averaged over a phase's samples.
-  List<double>? _chroma(int phase) {
-    final samples = _samples[phase];
-    if (samples == null || samples.length < 3) return null;
-    var r = 0.0, g = 0.0, b = 0.0;
-    for (final s in samples) {
-      final sum = s[0] + s[1] + s[2];
-      if (sum <= 0) continue;
-      r += s[0] / sum;
-      g += s[1] / sum;
-      b += s[2] / sum;
+  /// Feed one frame's mean face-region RGB (0–255 each). With a
+  /// [timestampMs], samples inside the [settle] window are ignored.
+  void addSample(List<double> rgb, {int? timestampMs}) {
+    final start = _phaseStartMs;
+    if (timestampMs != null &&
+        start != null &&
+        timestampMs - start < settle.inMilliseconds) {
+      return;
     }
-    final n = samples.length;
-    return [r / n, g / n, b / n];
+    final sum = rgb[0] + rgb[1] + rgb[2];
+    if (sum <= 0) return;
+    (_samples[_phase] ??= []).add([rgb[0] / sum, rgb[1] / sum, rgb[2] / sum]);
   }
 
-  /// True = face reflected the colors, false = it didn't, null = not enough
-  /// samples to judge (treat as inconclusive, not as failure).
-  bool? evaluate() {
-    final baseline = _chroma(-1);
-    if (baseline == null) return null;
+  /// Chromaticity samples of [phase] for [channel].
+  List<double> _series(int phase, int channel) =>
+      [for (final s in _samples[phase] ?? const <List<double>>[]) s[channel]];
 
-    var judged = 0;
-    var correct = 0;
-    for (var i = 0; i < colors.length; i++) {
-      final flash = _chroma(i);
-      if (flash == null) continue;
-      judged++;
-      final deltas = [
-        flash[0] - baseline[0],
-        flash[1] - baseline[1],
-        flash[2] - baseline[2],
-      ];
-      final expected = colors[i].index; // Channel enum order = RGB order
-      final maxDelta = deltas.reduce(max);
-      // The flashed channel must rise, and rise more than the others.
-      if (deltas[expected] > 0.004 && deltas[expected] == maxDelta) {
-        correct++;
-      }
+  static double _mean(List<double> xs) =>
+      xs.reduce((a, b) => a + b) / xs.length;
+
+  static double _std(List<double> xs) {
+    final m = _mean(xs);
+    var acc = 0.0;
+    for (final x in xs) {
+      acc += (x - m) * (x - m);
     }
-    if (judged < 2) return null;
-    return correct >= judged - 1; // allow one miss
+    return sqrt(acc / (xs.length - 1));
+  }
+
+  /// True = the face reflected every colour (within [allowedMisses]),
+  /// false = it didn't, null = too few samples to judge (treat as
+  /// inconclusive, not as failure).
+  ///
+  /// A phase counts as correct when its colour's channel rises by more
+  /// than `max(minDelta, k × standard error)` both against the baseline
+  /// and against every other colour phase. The standard error of a
+  /// difference of means uses the per-frame noise σ measured on the
+  /// baseline, so pure noise has to beat ~3σ several times over.
+  bool? evaluate() {
+    const minSamples = 3;
+    if ((_samples[-1]?.length ?? 0) < minSamples) return null;
+    for (var i = 0; i < colors.length; i++) {
+      if ((_samples[i]?.length ?? 0) < minSamples) return null;
+    }
+
+    var misses = 0;
+    for (var i = 0; i < colors.length; i++) {
+      final c = colors[i].index; // Channel enum order = RGB order
+      final sigma = _std(_series(-1, c));
+      final flash = _series(i, c);
+      final flashMean = _mean(flash);
+
+      bool beats(List<double> other) {
+        final se = sigma * sqrt(1 / flash.length + 1 / other.length);
+        return flashMean - _mean(other) > max(minDelta, k * se);
+      }
+
+      var ok = beats(_series(-1, c));
+      for (var j = 0; ok && j < colors.length; j++) {
+        if (j != i) ok = beats(_series(j, c));
+      }
+      if (!ok) misses++;
+    }
+    return misses <= allowedMisses;
   }
 
   Map<String, Object?> metadataFor(bool? passed) => {
@@ -87,16 +134,24 @@ class FlashChallenge {
         'flashChallengeOrder': colors.map((c) => c.name).toList(),
       };
 
-  /// Mean R/G/B over the center 50% of the frame (subsampled). The face is
-  /// centered by the session's own positioning requirement, so the center
-  /// region is face-dominated without needing coordinate-space gymnastics.
-  static List<double>? sampleCenterRgb(CameraImage image) {
+  /// Mean R/G/B over the centre 50% of the frame (subsampled).
+  static List<double>? sampleCenterRgb(CameraImage image) =>
+      sampleRgb(image, region: const Rect.fromLTRB(0.25, 0.25, 0.75, 0.75));
+
+  /// Mean R/G/B over [region] (normalised to the camera buffer, 0..1),
+  /// subsampled. Pass the face's box so background doesn't dilute the
+  /// reflection.
+  static List<double>? sampleRgb(CameraImage image, {required Rect region}) {
     if (image.planes.isEmpty) return null;
     final width = image.width;
     final height = image.height;
-    final x0 = width ~/ 4, x1 = width * 3 ~/ 4;
-    final y0 = height ~/ 4, y1 = height * 3 ~/ 4;
-    const step = 8;
+    final area = region.intersect(const Rect.fromLTRB(0, 0, 1, 1));
+    if (area.isEmpty) return null;
+    final x0 = (area.left * width).floor(), x1 = (area.right * width).ceil();
+    final y0 = (area.top * height).floor();
+    final y1 = (area.bottom * height).ceil();
+    // ~40 samples per axis whatever the region size.
+    final step = max(2, min(x1 - x0, y1 - y0) ~/ 40);
 
     var r = 0.0, g = 0.0, b = 0.0;
     var count = 0;

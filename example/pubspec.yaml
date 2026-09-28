@@ -4,13 +4,17 @@ publish_to: "none"
 version: 1.0.0
 
 environment:
-  sdk: ">=3.4.0 <4.0.0"
+  sdk: ">=3.10.0 <4.0.0"
 
 dependencies:
   flutter:
     sdk: flutter
   liveness_flutter:
     path: ../
+  # recipes/server_bound.dart: fetching a challenge from your backend.
+  http: ^1.2.0
+  # test_bench: the simulated server checks hash the uploaded files.
+  crypto: ^3.0.3
   permission_handler: ^11.3.0
   video_player: ^2.9.0
 
@@ -18,6 +22,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  camera_platform_interface: ^2.14.0
 
 flutter:
   uses-material-design: true

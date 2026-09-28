@@ -24,3 +24,6 @@ example/.metadata
 *.iml
 .vscode/
 .DS_Store
+
+# Misc.
+CLAUDE.md

@@ -38,15 +38,17 @@ void main() {
     session.onFrame(faces: [neutral(0)], faceInPosition: true, timestampMs: 0);
     expect(session.current.phase, LivenessPhase.performingAction);
 
-    session.onFrame(
-        faces: [smiling(100)], faceInPosition: true, timestampMs: 100);
-    session.onFrame(
-        faces: [smiling(700)], faceInPosition: true, timestampMs: 700);
+    // A held smile at the camera's usual ~10 fps.
+    for (var t = 100; t <= 700; t += 100) {
+      session.onFrame(
+          faces: [smiling(t)], faceInPosition: true, timestampMs: t);
+    }
 
     expect(session.current.phase, LivenessPhase.completed);
     expect(events, [
       ReferenceReadyEvent,
       ActionStartedEvent,
+      ActionPeakEvent,
       ActionCompletedEvent,
       SessionCompletedEvent,
     ]);
@@ -60,10 +62,11 @@ void main() {
     );
     session.start();
     session.onFrame(faces: [neutral(0)], faceInPosition: true, timestampMs: 0);
-    session.onFrame(
-        faces: [smiling(100)], faceInPosition: true, timestampMs: 100);
-    session.onFrame(
-        faces: [smiling(700)], faceInPosition: true, timestampMs: 700);
+    // A held smile at the camera's usual ~10 fps.
+    for (var t = 100; t <= 700; t += 100) {
+      session.onFrame(
+          faces: [smiling(t)], faceInPosition: true, timestampMs: t);
+    }
 
     expect(session.current.phase, LivenessPhase.awaitingNeutral);
 
@@ -95,16 +98,18 @@ void main() {
         session.current.failureReason, LivenessFailureReason.actionTimeout);
   });
 
-  test('fails on multiple faces', () {
+  test('fails on multiple faces held past the grace period', () {
     final session = LivenessSession(
       const LivenessConfig(actions: [LivenessAction.smile]),
     );
     session.start();
-    session.onFrame(
-      faces: [neutral(0), neutral(0)],
-      faceInPosition: true,
-      timestampMs: 0,
-    );
+    for (var t = 0; t <= 600; t += 100) {
+      session.onFrame(
+        faces: [neutral(t), neutral(t)],
+        faceInPosition: true,
+        timestampMs: t,
+      );
+    }
     expect(session.current.phase, LivenessPhase.failed);
     expect(
         session.current.failureReason, LivenessFailureReason.multipleFaces);
@@ -147,6 +152,36 @@ void main() {
     // Without shuffle, order is preserved.
     final plain = LivenessSession(const LivenessConfig(actions: actions));
     expect(plain.actionOrder, actions);
+  });
+
+  test('B9c default shuffle (Random.secure) varies between sessions', () {
+    const actions = [
+      LivenessAction.blink,
+      LivenessAction.smile,
+      LivenessAction.nod,
+      LivenessAction.lookLeft,
+      LivenessAction.lookRight,
+    ];
+    final orders = {
+      for (var i = 0; i < 20; i++)
+        LivenessSession(
+          const LivenessConfig(actions: actions, shuffleActions: true),
+        ).actionOrder.join(','),
+    };
+    // 120 possible orders; 20 draws all landing on one is ~1e-40.
+    expect(orders.length, greaterThan(1));
+  });
+
+    test('start() after a cancel keeps the session ended', () {
+    // Review finding: a cancel during camera startup was undone by the
+    // start() that followed.
+    final session = LivenessSession(
+      const LivenessConfig(actions: [LivenessAction.smile]),
+    );
+    session.cancel();
+    session.start();
+    expect(session.current.phase, LivenessPhase.failed);
+    expect(session.current.failureReason, LivenessFailureReason.cancelled);
   });
 
   test('cancel produces cancelled failure', () {

@@ -1,3 +1,302 @@
+# 0.5.0
+
+A reliability and honesty release: sessions can no longer hang, `onResult`
+really is called exactly once, the on-screen oval now decides where the
+face must be, evidence photos show the action, and the anti-spoof pieces do
+what the README says. New hooks bind sessions to your server (challenges,
+image hashes, attestation) and let you plug in your own anti-spoof model.
+The package is in beta: pre-1.0, so there are breaking changes; each is
+listed below. Issues from anyone are welcome at
+https://github.com/maykhid/liveness_flutter/issues.
+
+### Breaking
+
+- New `LivenessFailureReason.sessionTimeout`. Exhaustive `switch`es over
+  `LivenessFailureReason` need a new case.
+- Sessions now end on their own: by default after 2 minutes overall
+  (`sessionTimeout`) and after 10 s of not returning to a neutral face
+  (`neutralTimeout`). Pass `sessionTimeout: null` for the old unbounded
+  behaviour.
+- `LivenessSession(config)` throws an `ArgumentError` for an invalid config.
+- `multipleFaces` failures now need a second face for more than
+  `multipleFacesGrace` (500 ms). Set it to `Duration.zero` for the old
+  instant behaviour.
+- Action photos are now taken at the action's peak by default, so their
+  `timestampMs` is earlier than before. Set `captureAtPeak: false` for the
+  old completion-frame photos. Custom `LivenessEvent` switches need an
+  `ActionPeakEvent` case.
+- New `FaceGuidance.tooBright` value. Exhaustive `switch`es over
+  `FaceGuidance` need a new case.
+- `onResult` can now run right after `dispose()`, when the widget's context
+  is unmounted. Code that navigates in `onResult` must check `context.mounted`
+  first (the README example now does).
+- `HttpLivenessUploader`'s `metadata` JSON is now `result.toJson()`: the
+  diagnostics (`blink_ms`, `confidence_*`, `flashChallenge`, …) moved from
+  the top level into a nested `metadata` object, and image file names
+  changed from `<action>_<index>.jpg` to `<action>_<kind>_<t>ms.jpg`.
+- `HttpLivenessUploader.upload()` now throws on non-2xx responses and on
+  timeouts (60 s per attempt by default). Wrap it in `try`/`catch`.
+- The face-in-position test now follows the drawn target. Faces that
+  passed the old loose centre check may now get `notCentered`, `tooFar` or
+  `tooClose`; tune `ovalSizeFactor` or `targetFillMin`/`targetFillMax`.
+- The default `LivenessStrings.centeringFace` is now "Fit your face in the
+  oval" (it sits above a specific hint now), and `FaceGuidance.multipleFaces`
+  was removed from the default `guidanceMessages` map in favour of
+  `LivenessStrings.multipleFaces`.
+- `LivenessStrings.actionInstructions` / `guidanceMessages` are now getters
+  returning your entries merged over the defaults (the constructor
+  parameters are unchanged). The failed screen shows the reason-specific
+  text from `failureMessages` instead of `failed`.
+- New `LivenessFailureReason.challengeExpired`. `LivenessConfig.actions` may
+  be empty when a `challenge` is set.
+- `FlashChallenge.phase` is now read-only; use `beginPhase(phase,
+  timestampMs)`. The flash challenge is stricter, so borderline real faces
+  that passed before may now be `failed` (it still only lowers the
+  confidence score).
+- New `LivenessFailureReason.faceChanged`. ML Kit face tracking is now
+  enabled when no action needs contours.
+- New `LivenessFailureReason.permissionDenied`. A denied camera used to
+  report `systemError`.
+
+### Added
+
+- `LivenessConfig.sessionTimeout` (default 2 min, nullable) and
+  `LivenessConfig.neutralTimeout` (default 10 s).
+- `LivenessSession.tick(timestampMs)`: advances timers without a frame.
+  The widget calls it every 250 ms.
+- `LivenessConfig.validate()` throws an `ArgumentError` for empty `actions`,
+  `jpegQuality` outside 1–100, `maxImageDimension` < 64, `brightnessMin` ≥
+  `brightnessMax`, and non-positive timeouts. `LivenessSession` calls it in
+  its constructor; the constructor also asserts the numeric ranges.
+- `LivenessConfig.multipleFacesGrace` (default 500 ms),
+  `DetectorTuning.secondaryFaceMinAreaRatio` (default 0.35),
+  `LivenessSession.relevantFaces()` and `FaceSnapshot.area`.
+- `DetectorUpdate.isPeak`, `ActionPeakEvent`, `CapturedImage.kind`
+  (`reference` | `peak` | `completion` | `sequence`) and
+  `LivenessConfig.captureAtPeak` (default `true`).
+- `LivenessSessionState.copyWith` gains `clearCurrentAction`,
+  `clearFailureReason` and `clearRemaining`.
+- `LivenessConfig.invertPitch` (default `false`): flips up/down head tilt
+  for devices where `lookUp`, `lookDown` or `nod` behave inverted, like
+  `mirrorYaw` does for left/right.
+- `FaceGuidance.tooBright` with a default message, and
+  `FrameQuality.issueFor(config)`.
+- `metadata['cancelledBy']` on cancelled results: `'user'`, `'lifecycle'`,
+  `'dispose'` or `'restart'`.
+- `HttpLivenessUploader.client`: inject an `http.Client` (your own, or a
+  `MockClient` in tests).
+- `HttpLivenessUploader.timeout` (default 60 s per attempt), `maxRetries`
+  (default 0) and `retryDelay` (default 1 s, doubling): network errors,
+  timeouts and 5xx responses are retried; 4xx never are.
+  `LivenessUploadException`.
+- `LivenessController` (`LivenessDetector.controller`, optional): read
+  `state`, `actionPlan` and `sessionId`, and call `cancel()` or `restart()`
+  from outside the widget. `restart()` starts a fresh session (new session
+  ID, new shuffle, new camera) and still delivers exactly one result per
+  session (`cancelledBy: 'restart'` for an interrupted one).
+- `LivenessSessionState.actionPlan` (the executed order, from the first
+  state), `actionTimeout` and `sessionRemaining`. `tick()` keeps `remaining`
+  and `sessionRemaining` counting down when frames stall.
+- `LivenessTheme.ovalCenter` (default `Offset(0.5, 0.44)`),
+  `ovalAspectRatio` (default 1.35) and `ovalShape` (`TargetShape.oval` |
+  `roundedRect` | `circle`); `LivenessDetector.targetRegion` so a custom
+  overlay's window drives detection; `DetectorTuning.targetFillMin` (0.15)
+  and `targetFillMax` (1.0). The debug overlay draws the detected face box
+  in screen space.
+- `LivenessDetector.instructionAlignment` and `closeButtonBuilder`;
+  `LivenessTheme.closeIconColor`, `closeButtonAlignment`, `flashTintOpacity`
+  and `resultHoldDuration`; `LivenessStrings.close` (close-button tooltip and
+  screen-reader label).
+- `LivenessStrings.stepCounter` (`String Function(int current, int total)`),
+  `failureMessages` (per `LivenessFailureReason`, shown on the failed
+  screen), `failureFor()`, the `default*` maps, and `copyWith` on
+  `LivenessTheme` and `LivenessStrings`.
+- `LivenessDetector.onFeedback` with `LivenessFeedback` events
+  (`actionStarted`, `actionProgressHalf`, `actionCompleted`,
+  `sessionSucceeded`, `sessionFailed`) for sounds, haptics or TTS;
+  `LivenessConfig.hapticFeedback` (opt-in); the instruction text is now a
+  screen-reader live region, so each new instruction is announced.
+- `ResolutionPreset` (for `LivenessDetector.cameraResolution`) is
+  re-exported, so you no longer need to depend on `package:camera` to set
+  it.
+- Server-bound sessions: `LivenessConfig.challenge` (`LivenessChallenge`
+  with nonce, ordered actions and expiry; runs that order with no shuffle and
+  refuses an expired one), `LivenessResult.nonce`, per-image and per-frame
+  SHA-256 in `toJson()` (`images` / `frames` lists, `CapturedImage.sha256Hex`),
+  and an optional `LivenessAttestor` (`LivenessConfig.attestor`) that signs
+  `LivenessResult.attestationPayload` into `LivenessResult.attestation`.
+  New guide: `doc/server_verification.md`. New dependency: `crypto`.
+- `LivenessConfig.randomActionCount`: pick N actions at random from
+  `actions` (a pool) and shuffle them, per session. Docs now recommend at
+  least one motion action, since pose-only actions can be satisfied by a
+  photo.
+- `LivenessConfig.flashAllowedMisses` (default 0); `FlashChallenge` gains
+  `beginPhase()`, `allowedMisses`, `k`, `settle`, `minDelta` and
+  `sampleRgb(region:)`.
+- Identity continuity (`IdentityGuard`): ML Kit tracking is now on
+  whenever no action needs contours; a tracking-ID change while a face stays
+  in view lowers the confidence score and is reported in
+  `metadata['identity_*']`, as are jumps in a rough face-geometry signature
+  (`FaceSnapshot.identitySignature`). `LivenessConfig.failOnFaceChange`
+  (opt-in) fails such sessions with the new
+  `LivenessFailureReason.faceChanged`.
+- Presentation-attack detection hook: `LivenessConfig.frameAnalyzers`
+  (`LivenessFrameAnalyzer` returning a 0–1 spoof probability per
+  `LivenessFrame`: upright JPEG plus face box) and `analyzerWeight`. Runs on
+  the reference and evidence frames even when photos aren't captured;
+  results go to `metadata['analyzers']` and into the confidence score. No
+  model is bundled.
+- Near-duplicate detection in the static-feed guard: frames that differ by
+  less than sensor noise (`FrameQuality.lumaSamples`) while the face box is
+  frozen lower the confidence score
+  (`metadata['confidence_nearDuplicate*']`). Soft signal only.
+- `LivenessConfig.mlInterval` (default 100 ms) and `mlIntervalBlink`
+  (default 50 ms); `DetectorTuning.blinkPartialCloseThreshold`.
+- `LivenessFailureReason.permissionDenied` (from `CameraAccessDenied`,
+  `CameraAccessDeniedWithoutPrompt`, `CameraAccessRestricted` and legacy
+  `cameraPermission` errors) with its own failure text,
+  `LivenessSession.permissionDenied()`, and
+  `LivenessDetector.permissionDeniedBuilder` (with a `retry` callback).
+- GitHub Actions CI: `flutter analyze` and `flutter test` for the package
+  and the example, on pushes to `main` and on pull requests. Widget tests
+  drive `LivenessDetector` through a fake camera, and the camera lifecycle
+  is tested against a fake camera plugin (241 package tests, 38 example
+  tests).
+- Reworked examples: a minimal `lib/main.dart` (about 90 lines), focused
+  recipes (custom UI, controller, server-bound session with upload), a
+  fully branded KYC flow for a fictional fintech, and a separate test bench
+  exposing every option, with guided device checks (pass / fail and a
+  copyable report), with a result page that runs the server checks
+  from `doc/server_verification.md` against clearly labelled in-app fakes.
+- `DetectorTuning.maxFrameGap` (default 250 ms): the most one gap between
+  analysed frames can count toward a hold.
+
+### Fixed
+
+- Sessions could hang forever while searching for or centering the face,
+  while waiting for a neutral face, or while paused for bad lighting. The
+  neutral case fails with `actionTimeout` and
+  `metadata['timeoutPhase'] = 'awaitingNeutral'`. The action timer now keeps
+  running during a quality pause.
+- `LivenessConfig(actions: [])` threw a `RangeError` on every frame and never
+  ended. An invalid config now produces one immediate `systemError` result
+  (with `metadata['configError']`) and an `onError` call, without opening
+  the camera.
+- A single frame with a second face (a poster, a TV, someone walking past)
+  failed the session instantly. Secondary faces under 35 % of the primary
+  face's area are now ignored, and a comparable second face must stay for
+  more than 500 ms before the session fails. Until then the session pauses
+  with `FaceGuidance.multipleFaces`. The primary face is now the largest one,
+  not the first one ML Kit returns.
+- Evidence photos missed the action: they were taken after it completed
+  (the blink photo showed open eyes, the nod photo a level head) and from the
+  newest camera frame rather than the analysed one. Each action's photo now
+  comes from its peak frame (eyes shut, deepest nod, start of a held pose).
+- A single missed face detection (or one blurry or dark frame) reset the
+  current action, restarting a 400 ms pose hold. The detector now keeps
+  its progress through short gaps, but holds only count time it actually
+  saw: each gap between analysed frames adds at most
+  `DetectorTuning.maxFrameGap` (250 ms), so a lost face or a stalled
+  camera can't complete a pose on two frames. A quality pause longer than
+  `faceLostGrace` restarts the action.
+- Dark or blurry frames reset the face-lost and multiple-faces timers, so
+  alternating bad frames could stop `faceLost` or `multipleFaces` from
+  ever firing. Quality-held frames now leave those timers alone.
+- `state.remaining` kept a stale countdown after an action completed. It is
+  now only set while an action is being performed.
+- Overexposed frames told the user to "Find better lighting"
+  (`FaceGuidance.lowLight`). They now report `FaceGuidance.tooBright`.
+- `shuffleActions` used a non-cryptographic `Random()`; it now uses
+  `Random.secure()`, since the shuffle is an anti-replay measure.
+- `google_mlkit_face_detection` now allows `>=0.14.0 <0.16.0`. 0.15.x needs
+  Flutter 3.44 / Dart 3.12; older SDKs keep resolving to 0.14.
+- Raising the screen brightness no longer delays camera start: the
+  platform call now runs in the background.
+- `onResult` was never called when the detector was removed before the
+  session ended (route popped, system back), despite the "called exactly
+  once" promise. It is now built in `dispose()` and delivered on the next
+  microtask (so `onResult` may call `setState`) as a `cancelled` result, or
+  with the real outcome if the session had already ended. A throwing
+  `onResult` there goes to `onError`.
+- `HttpLivenessUploader` left out `sessionId` and `confidenceScore`, the two
+  audit fields the README promotes. The `metadata` field is now
+  `result.toJson()`, and the request carries an `X-Liveness-Session` header.
+  Image file names now include the capture kind and timestamp
+  (`blink_peak_812ms.jpg`, `reference_120ms.jpg`) instead of a list index.
+- `HttpLivenessUploader.upload()` completed normally on any HTTP status,
+  including 500. It now throws `LivenessUploadException(statusCode, body)` for
+  non-2xx responses (after `onResponse` has seen them).
+- The on-screen oval had no effect on detection: the face-position check
+  used the image centre ±25 % and a 4–75 % face area, whatever
+  `ovalSizeFactor` said. The drawn target is now mapped into camera space
+  (cover-fit, sensor rotation, front-camera mirror) and the face must have
+  its centre inside it and fill it within `targetFillMin`–`targetFillMax`.
+- `LivenessTheme.hintStyle` and `LivenessStrings.multipleFaces` were declared
+  but never used. Guidance hints ("Move closer", "Find better lighting") are
+  now shown in `hintStyle` under the current instruction instead of replacing
+  it, and `multipleFaces` is the multiple-faces hint unless
+  `guidanceMessages` has its own entry. The close icon was always white
+  (invisible on light scrims).
+- "Step N of M" was hard-coded English; the failed screen always said
+  "Verification failed" whatever the reason; and a partial
+  `actionInstructions` or `guidanceMessages` map made every missing entry
+  fall back to raw enum names like `lookLeft`. User maps are now merged over
+  the defaults.
+- The failure confidence score divided progress by `config.actions.length`
+  rather than the number of actions actually planned for the session.
+- The colour-flash challenge was easy to pass by chance: it sampled the
+  centre of the whole frame (including background), counted the moments
+  right after each colour switch, allowed one wrong colour, and used a fixed
+  0.004 threshold. It now samples inside the face box, skips the first
+  150 ms of each colour, requires every colour by default, and requires each
+  rise to beat 3 standard errors of the measured baseline noise against the
+  baseline and the other colours. Auto-exposure is locked during the flash
+  where supported. In simulation, noise-only passes dropped from ~5 % to 0
+  in 5,000 runs.
+- Frame-sequence capture paused during the flash challenge, contradicting
+  the README's "the flash moment is captured" claim. It now continues.
+- Docs overstated the "replay guard": it only catches pixel-identical
+  frames. It's now described as a static-feed guard, and the README says
+  plainly that it can't detect a photo or screen held up to a real camera.
+- Fast blinks were often missed: ML ran at ~10 fps, so a sub-100 ms eye
+  closure could fall between analysed frames. During `blink` and
+  `eyesClosed` it now runs at ~20 fps (`mlIntervalBlink`), and a half-shut
+  reading between open frames counts as the closed part of a blink
+  (`DetectorTuning.blinkPartialCloseThreshold`, default 0.4). In simulation a
+  60 ms closure is now caught in ≥ 95 % of runs.
+- The example README said the platform folders weren't checked in (they
+  are; only the pub.dev package omits them), listed `minSdkVersion 21` (the
+  package needs 24), and described outdated upload fields.
+- The declared SDK constraints (Dart 3.4 / Flutter 3.22) were lower than
+  the dependencies allow: `camera` 0.12 needs Dart 3.10 / Flutter 3.38, and
+  the code already used Flutter 3.27 APIs. `pubspec.yaml` now says so.
+- The camera preview was scaled to the whole screen rather than the space
+  the detector was given, and wasn't clipped. With the detector under an
+  app bar, the drawn target and the detection zone pointed at different
+  parts of the face. The preview now cover-fits its own space and is
+  clipped, matching the detection maths.
+- A restart (or quickly opening a new liveness screen) could open the new
+  camera while the old one was still closing ("camera in use" on Android).
+  Each camera now waits for the previous one's release (at most 2 s, so a
+  hanging release can't block later sessions).
+- Closing the screen while the camera was still starting could leave the
+  camera (and torch) on. Startup now stops as soon as the screen is gone,
+  and the camera is always released.
+- Leaving during the colour-flash challenge delivered `success: true`
+  without the anti-replay check ever being evaluated (and touched disposed
+  state). It is now a `cancelled` result with
+  `metadata['flashChallenge'] = 'interrupted'`.
+- A cancel while the camera was still starting was undone: the session came
+  back to `searchingFace` and the camera kept streaming. The session now
+  stays ended and the late-opened camera is stopped.
+- `failOnMultipleFaces: false` still blocked the user while a second face
+  was in view (the face never counted as in position). The largest face is
+  now used and the others are ignored, as documented.
+- With an attestor, a photo that finished encoding during attestation ended
+  up in the delivered result but not in the signed payload, so server-side
+  verification failed for a genuine user. The delivered result is now
+  exactly the one that was attested.
+
 # 0.4.4
 
 - Updated README.md

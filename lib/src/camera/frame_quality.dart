@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+
+import '../models/models.dart';
 
 /// Cheap per-frame quality metrics, computed by subsampling ~1 in 256
 /// pixels of the luma channel. Costs well under a millisecond per frame.
@@ -9,6 +12,7 @@ class FrameQuality {
     required this.brightness,
     required this.sharpness,
     required this.hash,
+    this.lumaSamples,
   });
 
   /// Mean luma, 0 (black) – 1 (white).
@@ -20,8 +24,22 @@ class FrameQuality {
 
   /// FNV-1a hash of the sampled pixels. Two frames from a live camera are
   /// never pixel-identical (sensor noise); repeated identical hashes mean
-  /// static/injected input. Used by the replay guard.
+  /// static/injected input. Used by the static-feed guard.
   final int hash;
+
+  /// The subsampled luma values the other metrics came from (~1 in 256
+  /// pixels). Lets the static-feed guard spot near-identical frames that a
+  /// hash would miss.
+  final Uint8List? lumaSamples;
+
+  /// The quality problem to show the user, or null if the frame is usable
+  /// under [config]'s thresholds.
+  FaceGuidance? issueFor(LivenessConfig config) {
+    if (brightness < config.brightnessMin) return FaceGuidance.lowLight;
+    if (brightness > config.brightnessMax) return FaceGuidance.tooBright;
+    if (sharpness < config.sharpnessMin) return FaceGuidance.blurry;
+    return null;
+  }
 }
 
 class FrameQualityAnalyzer {
@@ -45,6 +63,8 @@ class FrameQualityAnalyzer {
     final bytesPerPixel = isBgra ? 4 : 1;
     final channelOffset = isBgra ? 1 : 0; // G in BGRA
 
+    final samples = BytesBuilder(copy: false);
+    final row = <int>[];
     var count = 0;
     var sum = 0;
     var sumSq = 0;
@@ -52,15 +72,18 @@ class FrameQualityAnalyzer {
 
     for (var y = 0; y < height; y += _step) {
       final rowStart = y * stride;
+      row.clear();
       for (var x = 0; x < width; x += _step) {
         final index = rowStart + x * bytesPerPixel + channelOffset;
         if (index >= bytes.length) continue;
         final value = bytes[index];
+        row.add(value);
         sum += value;
         sumSq += value * value;
         count++;
         hash = ((hash ^ value) * 0x01000193) & 0xFFFFFFFF;
       }
+      samples.add(Uint8List.fromList(row));
     }
     if (count == 0) return null;
 
@@ -72,6 +95,7 @@ class FrameQualityAnalyzer {
       brightness: mean / 255.0,
       sharpness: stdDev / 255.0,
       hash: hash,
+      lumaSamples: samples.takeBytes(),
     );
   }
 

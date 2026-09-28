@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../camera/detection_geometry.dart';
 import '../models/models.dart';
 import '../theme/liveness_theme.dart';
 
@@ -17,26 +18,57 @@ class LivenessOverlayPainter extends CustomPainter {
   final double progress;
   final LivenessPhase phase;
 
-  /// The oval used both for painting and for the face-in-position test.
-  static Rect ovalRect(Size size, double sizeFactor) {
-    final shortest = size.shortestSide;
-    final width = shortest * sizeFactor;
-    final height = width * 1.35;
+  /// The target's bounding rect in [size] (pixels). The detector maps the
+  /// same rect into camera space for the face-in-position test, so what is
+  /// drawn is what is checked.
+  static Rect targetRect(Size size, LivenessTheme theme) {
+    final width = size.shortestSide * theme.ovalSizeFactor;
+    final height =
+        theme.ovalShape == TargetShape.circle ? width : width * theme.ovalAspectRatio;
     return Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.44),
+      center: Offset(
+        size.width * theme.ovalCenter.dx,
+        size.height * theme.ovalCenter.dy,
+      ),
       width: width,
       height: height,
     );
   }
 
+  /// [targetRect] normalised to [size] (0..1), as used for detection.
+  static Rect normalizedTargetRect(Size size, LivenessTheme theme) {
+    final r = targetRect(size, theme);
+    return Rect.fromLTRB(
+      r.left / size.width,
+      r.top / size.height,
+      r.right / size.width,
+      r.bottom / size.height,
+    );
+  }
+
+  Path _shapePath(Rect rect) {
+    final path = Path();
+    switch (theme.ovalShape) {
+      case TargetShape.oval:
+      case TargetShape.circle:
+        path.addOval(rect);
+      case TargetShape.roundedRect:
+        path.addRRect(RRect.fromRectAndRadius(
+          rect,
+          Radius.circular(rect.shortestSide * 0.18),
+        ));
+    }
+    return path;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    final oval = ovalRect(size, theme.ovalSizeFactor);
+    final oval = targetRect(size, theme);
 
-    // Scrim with oval cutout.
+    // Scrim with target cutout.
     final scrim = Path()
       ..addRect(Offset.zero & size)
-      ..addOval(oval)
+      ..addPath(_shapePath(oval), Offset.zero)
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(scrim, Paint()..color = theme.backgroundColor);
 
@@ -46,8 +78,8 @@ class LivenessOverlayPainter extends CustomPainter {
       LivenessPhase.failed => theme.failureColor,
       _ => faceInPosition ? theme.ovalBorderColorActive : theme.ovalBorderColor,
     };
-    canvas.drawOval(
-      oval,
+    canvas.drawPath(
+      _shapePath(oval),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = theme.ovalBorderWidth
@@ -100,16 +132,21 @@ class DefaultInstructionPanel extends StatelessWidget {
   final LivenessSessionState state;
   final LivenessTheme theme;
 
+  /// What's wrong with the frame right now, shown under the instruction in
+  /// [LivenessTheme.hintStyle]; null when nothing is (or it would repeat
+  /// the instruction).
+  String? get _hint {
+    if (state.guidance == FaceGuidance.none ||
+        state.phase == LivenessPhase.completed ||
+        state.phase == LivenessPhase.failed) {
+      return null;
+    }
+    final hint = theme.strings.guidanceFor(state.guidance);
+    return hint == _instruction ? null : hint;
+  }
+
   String get _instruction {
     final s = theme.strings;
-    // Frame-specific problems take priority — they tell the user exactly
-    // what to fix right now.
-    if (state.guidance != FaceGuidance.none &&
-        state.phase != LivenessPhase.completed &&
-        state.phase != LivenessPhase.failed) {
-      final hint = s.guidanceFor(state.guidance);
-      if (hint != null) return hint;
-    }
     switch (state.phase) {
       case LivenessPhase.initializing:
         return s.initializing;
@@ -125,30 +162,47 @@ class DefaultInstructionPanel extends StatelessWidget {
       case LivenessPhase.completed:
         return s.completed;
       case LivenessPhase.failed:
-        return s.failed;
+        return s.failureFor(state.failureReason);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final hint = _hint;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 250),
-          child: Text(
-            _instruction,
-            key: ValueKey(_instruction),
-            style: state.phase == LivenessPhase.failed
-                ? theme.instructionStyle.copyWith(color: theme.failureColor)
-                : theme.instructionStyle,
-            textAlign: TextAlign.center,
+        // Live region: screen readers announce each new instruction.
+        Semantics(
+          liveRegion: true,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            child: Text(
+              _instruction,
+              key: ValueKey(_instruction),
+              style: state.phase == LivenessPhase.failed
+                  ? theme.instructionStyle.copyWith(color: theme.failureColor)
+                  : theme.instructionStyle,
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
+        if (hint != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            hint,
+            key: const ValueKey('liveness-hint'),
+            style: theme.hintStyle,
+            textAlign: TextAlign.center,
+          ),
+        ],
         const SizedBox(height: 8),
         if (state.phase == LivenessPhase.performingAction)
           Text(
-            'Step ${state.currentActionIndex + 1} of ${state.totalActions}',
+            theme.strings.stepCounter(
+              state.currentActionIndex + 1,
+              state.totalActions,
+            ),
             style: theme.counterStyle,
           ),
       ],

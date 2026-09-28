@@ -1,3 +1,5 @@
+import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -54,5 +56,72 @@ void main() {
     expect(guard.confidencePenalty, greaterThan(0));
     // Soft signal only — must never hard-fail.
     expect(guard.replaySuspected, false);
+  });
+
+  group('S6 near-duplicate frames', () {
+    final rng = Random(3);
+    final base = Uint8List.fromList(
+        List.generate(3600, (_) => 40 + rng.nextInt(170)));
+
+    /// [base] with each sample moved by up to ±[jitter] levels.
+    Uint8List noisy(int jitter) => Uint8List.fromList([
+          for (final v in base)
+            (v + (jitter == 0 ? 0 : rng.nextInt(2 * jitter + 1) - jitter))
+                .clamp(0, 255),
+        ]);
+
+    FaceSnapshot at(int t, {double dx = 0}) => FaceSnapshot(
+          timestampMs: t,
+          headEulerAngleX: 0,
+          headEulerAngleY: 0,
+          boundingBox: Rect.fromLTWH(0.3 + dx, 0.3, 0.4, 0.4),
+        );
+
+    /// A re-encoded still: ~30 % of samples off by one level.
+    Uint8List reencoded() => Uint8List.fromList([
+          for (final v in base)
+            rng.nextDouble() < 0.3 ? (v + 1).clamp(0, 255) : v,
+        ]);
+
+    test('a near-identical feed with a frozen face box is flagged softly', () {
+      final guard = SpoofGuard();
+      for (var i = 0; i < 20; i++) {
+        // Different hash each frame (tiny re-encoding changes), so the
+        // exact-duplicate check can't see it.
+        guard.onFrame(hash: i, face: at(i * 100), luma: reencoded());
+      }
+      expect(guard.replaySuspected, isFalse, reason: 'never a hard fail');
+      expect(guard.nearDuplicateRuns, 1);
+      expect(guard.confidencePenalty, greaterThanOrEqualTo(0.15));
+      expect(guard.metadata['confidence_nearDuplicateRuns'], 1);
+    });
+
+    test('live sensor noise is not a near-duplicate', () {
+      final guard = SpoofGuard();
+      for (var i = 0; i < 40; i++) {
+        guard.onFrame(hash: i, face: at(i * 100), luma: noisy(4));
+      }
+      expect(guard.nearDuplicateFrames, 0);
+    });
+
+    test('a moving face box is not a near-duplicate', () {
+      final guard = SpoofGuard();
+      for (var i = 0; i < 40; i++) {
+        guard.onFrame(
+          hash: i,
+          face: at(i * 100, dx: (i % 3) * 0.004),
+          luma: noisy(0),
+        );
+      }
+      expect(guard.nearDuplicateRuns, 0);
+    });
+
+    test('without luma samples nothing is judged', () {
+      final guard = SpoofGuard();
+      for (var i = 0; i < 40; i++) {
+        guard.onFrame(hash: i, face: at(i * 100));
+      }
+      expect(guard.nearDuplicateFrames, 0);
+    });
   });
 }
