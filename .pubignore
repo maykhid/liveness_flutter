@@ -27,3 +27,6 @@ example/.metadata
 
 # Misc.
 CLAUDE.md
+
+# README media (linked from GitHub, not needed in the package)
+screenshots/

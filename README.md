@@ -12,11 +12,9 @@
 
 *Blink. Smile. Turn left. Verified.* ✅
 
-<!-- 📸 Screenshots coming soon:
-<img src="screenshots/demo.gif" width="260"/>
-<img src="screenshots/session.png" width="260"/>
-<img src="screenshots/result.png" width="260"/>
--->
+<img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" width="280" alt="A branded account-upgrade flow: account home, intro, a face check with nod and blink steps, then verified"/>
+
+<sub>The <a href="#-example-a-fully-branded-kyc-flow">branded fintech example</a>, running on an iPhone.</sub>
 
 </div>
 
