@@ -1,3 +1,17 @@
+# 0.5.1
+
+Documentation only — no code or API changes.
+
+- The README opens with demos of the default and a fully branded screen
+  side by side, a short code sample and the requirements.
+- New README sections: "Is this right for you?", "How it works" (with a
+  diagram) and an FAQ; "Why this package?" rewritten in plain terms.
+- Details moved out of the README into guides: `doc/flash_challenge.md`,
+  `doc/capture_and_media.md`, `doc/assisted_mode.md` and
+  `doc/result_reference.md`.
+- README images live in `screenshots/`, which is not part of the published
+  package.
+
 # 0.5.0
 
 A reliability and honesty release: sessions can no longer hang, `onResult`
