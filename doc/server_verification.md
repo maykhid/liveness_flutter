@@ -119,6 +119,14 @@ that's a reject or a review.
 
 ## 3a. Writing an attestor
 
+**Why you need one.** Sections 1–3 prove the upload is consistent: the
+right nonce, the right order, the photos that were hashed. They don't
+prove the upload came from your app. A script that copies the request
+format can ask for a challenge, skip the camera, and send any photos with
+matching hashes. An attestation is the only part a script can't forge:
+Google or Apple signs the payload hash only when it comes from your
+genuine app on a real device.
+
 The package gives you the hook; Play Integrity and App Attest are tied to
 your Google Play and Apple accounts, so the platform code lives in your
 app. You need three things:

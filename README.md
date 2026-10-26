@@ -417,6 +417,16 @@ expected or whether the result was edited. Three hooks fix that:
   for a Dart template, Android and iOS snippets and the server checks.
   Treat a missing attestation as "send to review", not as a pass.
 
+**Why the attestor matters.** The challenge and hashes prove the upload
+is consistent, not where it came from. Anyone who reads this README can
+write a script that asks your server for a challenge, skips the camera,
+and uploads someone else's photos with `success: true`, the right nonce
+and matching hashes. Every other check passes. An attestor closes that
+gap: Google (Play Integrity) or Apple (App Attest) signs the session's
+hash only for your genuine, unmodified app on a real device, so a script,
+an emulator or a tampered build can't produce a valid token. It also
+blocks most fake-camera attacks, which need a rooted or modified phone.
+
 Without a server challenge, `randomActionCount: 3` makes each session
 pick 3 actions at random from your list *and* shuffle them — from all 13
 actions that's 1,716 possible sequences instead of 6.
