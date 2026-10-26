@@ -105,6 +105,7 @@ but doesn't ship one.
 | Have an agent verify someone else | [Assisted mode](#-assisted-mode-verifying-someone-else) |
 | Quick answers (offline? app size? masks?) | [FAQ](#-faq) |
 | Know the limits before shipping | [Honest notes](#-honest-notes--read-before-shipping) |
+| Have an AI coding agent do the integration | [Agent skills](#-using-an-ai-coding-agent) |
 
 ---
 
@@ -246,6 +247,36 @@ version of these steps is [`example/lib/main.dart`](example/lib/main.dart).
 Before using it for anything with real consequences, read
 [Bind sessions to your server](#-bind-sessions-to-your-server-recommended-for-kyc)
 and the [honest notes](#-honest-notes--read-before-shipping).
+
+## 🤖 Using an AI coding agent?
+
+The package ships two [agent skills](https://agentskills.io):
+instructions that Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI
+and other coding agents load when a task calls for them, so the agent
+integrates the package the way this README describes instead of
+guessing.
+
+| Skill | Helps with |
+|---|---|
+| `liveness-flutter` | The app: platform setup, choosing actions, tuning, custom UI, the controller, uploads, server challenges, attestors and anti-spoof models. It also keeps the agent from claiming more than the package does. |
+| `liveness-flutter-server` | Your backend, in any language: issuing challenges and checking uploads, photo hashes and attestation tokens. Includes a reference verifier and a test vector. |
+
+Copy them into your app, matched to the version you depend on:
+
+```bash
+dart run liveness_flutter:skills
+```
+
+It puts them where your agent looks (`.claude/skills`, `.cursor/skills`,
+`.github/skills`, `.gemini/skills` or `.agents/skills`), going by the
+agent files already in your project. Pick the place yourself with
+`--agent <name>` or `--dir <path>`; `--help` lists every option. Commit
+the folder so everyone on the team gets them, and run the command again
+after upgrading the package.
+
+For a backend in another repository, or without Dart, copy
+`skills/liveness-flutter-server` from this repository, or use
+`npx skills add maykhid/liveness_flutter`.
 
 ---
 

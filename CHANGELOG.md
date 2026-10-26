@@ -15,6 +15,10 @@
 - `doc/server_verification.md`: "Writing an attestor", with a Dart
   template, Play Integrity and App Attest snippets, and the server checks
   for each platform.
+- Agent skills for AI coding agents, in `skills/`: `liveness-flutter`
+  (integrating the package in an app) and `liveness-flutter-server`
+  (verifying results on a backend, with a reference verifier and a test
+  vector). `dart run liveness_flutter:skills` copies them into a project.
 
 # 0.5.1
 
