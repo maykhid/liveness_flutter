@@ -5,7 +5,9 @@ controls their own phone, so **a `success: true` from the device is a
 claim, not a proof.** This guide describes what your backend should check
 before trusting a session. None of it makes on-device liveness bank-grade
 on its own. It makes tampering and replay detectable, and gives your
-server-side face matching and presentation-attack detection (PAD) honest
+server-side face matching and
+[presentation-attack detection](https://www.asisonline.org/security-management-magazine/articles/2024/08/biometrics/presentation-attack-detection/)
+(PAD) honest
 inputs.
 
 ## 1. Issue a challenge before the session

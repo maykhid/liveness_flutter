@@ -115,18 +115,28 @@ LivenessDetector(
     Anything regulated or with money on the line. The phone's verdict
     alone can be tampered with: follow the
     [server verification guide](server_verification.md) and review the
-    photos server-side (face match, presentation-attack detection).
+    photos server-side (face match,
+    [presentation-attack detection](https://www.asisonline.org/security-management-magazine/articles/2024/08/biometrics/presentation-attack-detection/)).
 
 </div>
 
 !!! danger "Not the right tool if"
 
-    You need *certified* liveness — for example, a passed ISO/IEC 30107-3
-    presentation-attack evaluation such as iBeta's — or protection against
-    sophisticated masks and deepfakes. That takes a trained anti-spoof
-    model and usually a paid provider. This package can
+    You need *certified* liveness — for example, a passed
+    [ISO/IEC 30107-3](https://www.iso.org/standard/79520.html)
+    presentation-attack evaluation such as
+    [iBeta's](https://www.ibeta.com/biometric-spoofing-pad-testing/) — or
+    protection against sophisticated masks and deepfakes. That takes a
+    trained anti-spoof model and usually a paid provider. This package can
     [plug such a model in](server_binding.md#bring-your-own-anti-spoof-model)
     but doesn't ship one.
+
+    *What that means:* a **presentation attack** is showing the camera
+    something that isn't a live person, such as a photo, a screen, a mask or
+    a deepfake. ISO/IEC 30107-3 is the international standard for testing
+    how well a system catches them, and labs like iBeta certify products
+    against it. ASIS has a short
+    [plain-language introduction](https://www.asisonline.org/security-management-magazine/articles/2024/08/biometrics/presentation-attack-detection/).
 
 ## Pick your path
 
