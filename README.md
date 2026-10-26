@@ -54,11 +54,6 @@ model downloads. No account.**
 
 **Requirements:** Flutter 3.38+ · Android 7.0+ (API 24) · iOS 15.5+
 
-> 🤖 **Using Claude Code, Cursor, Copilot or another coding agent?** After
-> adding the package, run `dart run liveness_flutter:skills` and your
-> agent will know how to integrate it.
-> [More about the agent skills →](#-using-an-ai-coding-agent)
-
 ## ✨ Why this package?
 
 | | |
@@ -114,37 +109,20 @@ but doesn't ship one.
 
 ## 🤖 Using an AI coding agent?
 
-The package ships two [agent skills](https://agentskills.io):
-instructions that Claude Code, Codex, Cursor, GitHub Copilot, Gemini CLI
-and other coding agents load when a task calls for them, so the agent
-integrates the package the way this README describes instead of
-guessing.
-
-| Skill | Helps with |
-|---|---|
-| `liveness-flutter` | The app: platform setup, choosing actions, tuning, custom UI, the controller, uploads, server challenges, attestors and anti-spoof models. It also keeps the agent from claiming more than the package does. |
-| `liveness-flutter-server` | Your backend, in any language: issuing challenges and checking uploads, photo hashes and attestation tokens. Includes a reference verifier and a test vector. |
-
-Add the package to `pubspec.yaml`
-([step 1](#1-install-and-set-up-the-platforms)), then copy the skills
-into your app, matched to the version you depend on:
+The package ships [agent skills](doc/agent_skills.md) that teach Claude
+Code, Codex, Cursor, GitHub Copilot, Gemini CLI and other coding agents
+how to integrate it in your app and verify results on your backend. Add
+the package to `pubspec.yaml`
+([step 1](#1-install-and-set-up-the-platforms)), then run this from your
+app's root:
 
 ```bash
 dart run liveness_flutter:skills
 ```
 
-It puts them where your agent looks (`.claude/skills`, `.cursor/skills`,
-`.github/skills`, `.gemini/skills` or `.agents/skills`), going by the
-agent files already in your project. Pick the place yourself with
-`--agent <name>` or `--dir <path>`; `--help` lists every option. Commit
-the folder so everyone on the team gets them, and run the command again
-after upgrading the package.
-
-For a backend in another repository, or without Dart, copy
-`skills/liveness-flutter-server` from this repository, or use
-`npx skills add maykhid/liveness_flutter`. Both give you the repository's
-latest skills, which may be ahead of the version you depend on; only
-`dart run liveness_flutter:skills` matches your installed version.
+It copies the skills, matched to your installed version, to where your
+agent looks. Commit them, and run it again after upgrading.
+[Options, backends in other repositories →](doc/agent_skills.md)
 
 ---
 
