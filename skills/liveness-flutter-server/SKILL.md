@@ -4,7 +4,7 @@ description: Builds or reviews the backend for the liveness_flutter Flutter pack
 license: MIT
 metadata:
   package: liveness_flutter
-  written-for: "0.6.0"
+  written-for: "0.6.1"
 ---
 
 # Verifying liveness_flutter sessions on a server

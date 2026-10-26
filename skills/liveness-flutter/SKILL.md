@@ -4,7 +4,7 @@ description: Integrates the liveness_flutter package (on-device face liveness ch
 license: MIT
 metadata:
   package: liveness_flutter
-  written-for: "0.6.0"
+  written-for: "0.6.1"
 ---
 
 # liveness_flutter

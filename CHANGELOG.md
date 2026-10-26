@@ -1,3 +1,14 @@
+# 0.6.1
+
+Documentation only — no code or API changes.
+
+- New docs site at https://maykhid.github.io/liveness_flutter/, built
+  from the guides in `doc/`. pubspec now links it as `documentation`.
+- The README is a short landing page: the pitch, install and links to
+  each guide. Its long sections moved to new guides in `doc/`
+  (getting started, examples, customization, controller, binding
+  sessions to your server, developer tools, FAQ and honest notes).
+
 # 0.6.0
 
 ### Breaking

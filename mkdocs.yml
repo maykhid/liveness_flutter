@@ -94,7 +94,7 @@ nav:
   - pub.dev: https://pub.dev/packages/liveness_flutter
 
 extra:
-  version: 0.6.0
+  version: 0.6.1
   changelog: https://github.com/maykhid/liveness_flutter/blob/main/CHANGELOG.md
   generator: false
   social:
