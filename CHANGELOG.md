@@ -1,3 +1,21 @@
+# 0.6.0
+
+### Breaking
+
+- `LivenessAttestor` has a new `prepare()` method with a default body.
+  Classes that `extends LivenessAttestor` need no change; classes that
+  `implements` it must add `Future<void> prepare() async {}` (or switch
+  to `extends`).
+
+### New
+
+- `LivenessAttestor.prepare()` is called when the liveness screen opens,
+  so slow setup (Play Integrity warm-up, App Attest key registration)
+  happens during the session instead of delaying the result.
+- `doc/server_verification.md`: "Writing an attestor", with a Dart
+  template, Play Integrity and App Attest snippets, and the server checks
+  for each platform.
+
 # 0.5.1
 
 Documentation only — no code or API changes.

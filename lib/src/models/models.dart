@@ -335,12 +335,22 @@ class LivenessChallenge {
 
 /// Produces a platform attestation (Play Integrity, App Attest, …) over a
 /// session. Implement it in your app; the package ships no implementation.
+/// See "Writing an attestor" in `doc/server_verification.md`.
 ///
 /// [attest] receives the SHA-256 of [LivenessResult.attestationPayload];
 /// whatever token it returns is stored as [LivenessResult.attestation] for
 /// your server to verify with the platform.
 abstract class LivenessAttestor {
   const LivenessAttestor();
+
+  /// Called once when the liveness screen starts, before the camera
+  /// opens, and not awaited. Use it for slow setup, such as warming up a
+  /// Play Integrity token provider or registering an App Attest key, so
+  /// [attest] is quick at the end of the session. Errors are passed to
+  /// `LivenessDetector.onError` and otherwise ignored, so [attest] should
+  /// retry the setup if it isn't done. A restart calls it again, so make
+  /// it idempotent. The default does nothing.
+  Future<void> prepare() async {}
 
   Future<String> attest(Uint8List payloadHash);
 }

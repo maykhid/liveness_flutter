@@ -370,6 +370,18 @@ class _LivenessRunState extends State<_LivenessRun>
             .catchError((Object _) {}));
       } catch (_) {}
     }
+    // Slow attestation setup (Play Integrity warm-up, App Attest key
+    // registration) runs alongside the session instead of at the end.
+    final attestor = _d.config.attestor;
+    if (attestor != null) {
+      try {
+        unawaited(attestor.prepare().catchError((Object e, StackTrace st) {
+          _d.onError?.call(e, st);
+        }));
+      } catch (e, st) {
+        _d.onError?.call(e, st);
+      }
+    }
     try {
       await _source.start(
         _onFrame,

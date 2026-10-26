@@ -392,6 +392,42 @@ void main() {
       expect(result.attestationPayload, contains('|server-nonce|true|smile|'));
     });
 
+    testWidgets('prepare runs once, before the camera opens and before attest',
+        (tester) async {
+      bool? cameraStartedAtPrepare;
+      final attestor = _RecordingAttestor(
+        onPrepare: () => cameraStartedAtPrepare = harness.source.started,
+      );
+      final results = await runSmile(
+        tester,
+        LivenessConfig(
+          actions: const [LivenessAction.smile],
+          attestor: attestor,
+        ),
+      );
+      expect(results.single.attestation, 'attested');
+      expect(attestor.calls, ['prepare', 'attest']);
+      expect(cameraStartedAtPrepare, isFalse);
+    });
+
+    testWidgets('a failing prepare reaches onError and attest still runs',
+        (tester) async {
+      final errors = <Object>[];
+      final attestor = _RecordingAttestor(prepareError: StateError('warm-up'));
+      final results = await runSmile(
+        tester,
+        LivenessConfig(
+          actions: const [LivenessAction.smile],
+          attestor: attestor,
+        ),
+        errors: errors,
+      );
+      expect(results.single.success, isTrue);
+      expect(results.single.attestation, 'attested');
+      expect(attestor.calls, ['prepare', 'attest']);
+      expect(errors.whereType<StateError>().single.message, 'warm-up');
+    });
+
     testWidgets('a failing attestor never blocks the result', (tester) async {
       final errors = <Object>[];
       final results = await runSmile(
@@ -593,10 +629,24 @@ void main() {
 }
 
 class _RecordingAttestor extends LivenessAttestor {
+  _RecordingAttestor({this.onPrepare, this.prepareError});
+
+  final void Function()? onPrepare;
+  final Object? prepareError;
   final hashes = <Uint8List>[];
+  final calls = <String>[];
+
+  @override
+  Future<void> prepare() async {
+    calls.add('prepare');
+    onPrepare?.call();
+    final error = prepareError;
+    if (error != null) throw error;
+  }
 
   @override
   Future<String> attest(Uint8List payloadHash) async {
+    calls.add('attest');
     hashes.add(payloadHash);
     return 'attested';
   }

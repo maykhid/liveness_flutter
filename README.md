@@ -412,7 +412,10 @@ expected or whether the result was edited. Three hooks fix that:
 - **`LivenessConfig.attestor`**: plug in Play Integrity or App Attest
   through the `LivenessAttestor` interface. It signs a hash of
   `sessionId|nonce|success|actions|image hashes`; the token lands in
-  `result.attestation`. The package doesn't implement the platform APIs.
+  `result.attestation`. The platform code lives in your app; see
+  [Writing an attestor](doc/server_verification.md#3a-writing-an-attestor)
+  for a Dart template, Android and iOS snippets and the server checks.
+  Treat a missing attestation as "send to review", not as a pass.
 
 Without a server challenge, `randomActionCount: 3` makes each session
 pick 3 actions at random from your list *and* shuffle them — from all 13

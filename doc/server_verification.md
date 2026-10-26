@@ -117,6 +117,206 @@ itself.
 (15 s), or when the screen was closed before it could run. Decide whether
 that's a reject or a review.
 
+## 3a. Writing an attestor
+
+The package gives you the hook; Play Integrity and App Attest are tied to
+your Google Play and Apple accounts, so the platform code lives in your
+app. You need three things:
+
+1. A `LivenessAttestor` in Dart that calls your native code.
+2. A little native code: Play Integrity on Android, App Attest on iOS.
+3. The server checks in "Check the token on your server" below.
+
+### Set up the accounts first
+
+- **Android:** the app must be installed from Google Play (the internal
+  testing track is enough; a sideloaded debug build gets an
+  "unrecognized" verdict). In Play Console, open App integrity and link a
+  Google Cloud project, enable the Play Integrity API in it, and note the
+  Cloud **project number**. Your server needs a service account in the
+  same project.
+- **iOS:** add the **App Attest** capability to the app in Xcode
+  (entitlement `com.apple.developer.devicecheck.appattest-environment`,
+  `development` while testing, `production` for release). Note your
+  **Team ID** and bundle ID. App Attest doesn't run on the simulator.
+
+### The Dart side
+
+Return a small JSON string, so your server knows which platform's token
+it got and iOS can send its key ID with the assertion:
+
+```dart
+import 'dart:convert';
+import 'package:flutter/services.dart';
+import 'package:liveness_flutter/liveness_flutter.dart';
+
+class PlatformAttestor extends LivenessAttestor {
+  PlatformAttestor({required this.cloudProjectNumber});
+
+  static const _channel = MethodChannel('myapp/attestation');
+
+  /// Google Cloud project number (Android only).
+  final int cloudProjectNumber;
+
+  Future<void>? _ready;
+
+  @override
+  Future<void> prepare() => _ready ??= _channel
+      .invokeMethod<void>('prepare', {'cloudProjectNumber': cloudProjectNumber})
+      .catchError((Object e) {
+    _ready = null; // let attest() try again
+    throw e;
+  });
+
+  @override
+  Future<String> attest(Uint8List payloadHash) async {
+    await prepare();
+    final token = await _channel.invokeMapMethod<String, Object?>(
+      'attest',
+      {'hash': payloadHash},
+    );
+    return jsonEncode(token);
+  }
+}
+```
+
+```dart
+LivenessConfig(
+  actions: const [], // ignored when a challenge is set
+  challenge: challengeFromYourServer,
+  attestor: PlatformAttestor(cloudProjectNumber: 123456789012),
+)
+```
+
+The package calls `prepare()` when the screen opens and `attest()` once
+at the end, with a 15-second limit. If `attest()` throws or times out,
+`result.attestation` is null and `metadata.attestationError` says why.
+
+### Android: Play Integrity
+
+Add `com.google.android.play:integrity` to `android/app/build.gradle`
+and register this handler on the channel in `MainActivity`:
+
+```kotlin
+class AttestationHandler(context: Context) : MethodChannel.MethodCallHandler {
+    private val manager = IntegrityManagerFactory.createStandard(context)
+    private var provider: StandardIntegrityTokenProvider? = null
+
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "prepare" -> {
+                val project = call.argument<Number>("cloudProjectNumber")!!.toLong()
+                manager.prepareIntegrityToken(
+                    PrepareIntegrityTokenRequest.builder()
+                        .setCloudProjectNumber(project).build()
+                ).addOnSuccessListener { provider = it; result.success(null) }
+                 .addOnFailureListener { result.error("prepare", it.message, null) }
+            }
+            "attest" -> {
+                val p = provider
+                    ?: return result.error("not_ready", "prepare() failed", null)
+                // The payload hash as lowercase hex is the requestHash.
+                val hash = call.argument<ByteArray>("hash")!!
+                    .joinToString("") { "%02x".format(it) }
+                p.request(
+                    StandardIntegrityTokenRequest.builder()
+                        .setRequestHash(hash).build()
+                ).addOnSuccessListener {
+                    result.success(mapOf("platform" to "android", "token" to it.token()))
+                }.addOnFailureListener { result.error("attest", it.message, null) }
+            }
+            else -> result.notImplemented()
+        }
+    }
+}
+```
+
+### iOS: App Attest
+
+App Attest has two steps. Once per install, the app creates a key and
+your server registers it with Apple. Then each session signs the payload
+hash with that key.
+
+```swift
+import DeviceCheck
+import CryptoKit
+
+final class AttestationHandler {
+    private let service = DCAppAttestService.shared
+    private let keyIdDefaultsKey = "liveness.appAttestKeyId"
+
+    /// "prepare": make sure this install has a registered key.
+    func prepare() async throws {
+        _ = try await registeredKeyId()
+    }
+
+    /// "attest": sign the payload hash. The hash is already a SHA-256,
+    /// so it is passed as the client data hash unchanged.
+    func attest(hash: Data) async throws -> [String: String] {
+        let keyId = try await registeredKeyId()
+        let assertion = try await service.generateAssertion(keyId, clientDataHash: hash)
+        return ["platform": "ios", "keyId": keyId,
+                "assertion": assertion.base64EncodedString()]
+    }
+
+    private func registeredKeyId() async throws -> String {
+        guard service.isSupported else { throw AttestationError.unsupported }
+        if let keyId = UserDefaults.standard.string(forKey: keyIdDefaultsKey) {
+            return keyId
+        }
+        let keyId = try await service.generateKey()
+        // Your server: a one-time challenge, then verify the attestation
+        // with Apple and store the key's public key and a counter of 0.
+        let challenge = try await YourApi.attestationChallenge()
+        let attestation = try await service.attestKey(
+            keyId, clientDataHash: Data(SHA256.hash(data: challenge)))
+        try await YourApi.registerKey(keyId: keyId, attestation: attestation)
+        UserDefaults.standard.set(keyId, forKey: keyIdDefaultsKey)
+        return keyId
+    }
+}
+```
+
+Wire it to the channel in `AppDelegate`: `"prepare"` calls `prepare()`,
+`"attest"` calls `attest(hash: (args["hash"] as! FlutterStandardTypedData).data)`.
+If Apple later rejects the key (for example after the app is restored to
+a new phone), delete the stored key ID so the next session registers a
+new one.
+
+### Check the token on your server
+
+Parse `metadata.attestation` as JSON and rebuild `payload_hash(meta)`
+(section 3). Then:
+
+**Android** (`"platform": "android"`): send the token to Google's
+`decodeIntegrityToken` API for your package name, authenticated with the
+service account, and check the decoded payload:
+
+- `requestDetails.requestHash` equals `payload_hash(meta).hex()`
+- `requestDetails.requestPackageName` is your app
+- `requestDetails.timestampMillis` is within the last few minutes
+- `appIntegrity.appRecognitionVerdict` is `PLAY_RECOGNIZED`
+- `deviceIntegrity.deviceRecognitionVerdict` contains
+  `MEETS_DEVICE_INTEGRITY` (or `MEETS_STRONG_INTEGRITY` for high-value
+  flows; stricter, and it rejects more older phones)
+
+**iOS** (`"platform": "ios"`): look up the public key and counter you
+stored for `keyId` at registration, decode the assertion (CBOR with
+`signature` and `authenticatorData`), and check, following Apple's
+"Validating apps that connect to your server" guide:
+
+- `nonce = SHA256(authenticatorData + payload_hash(meta))`, and the
+  signature verifies against `nonce` with the stored public key
+- the first 32 bytes of `authenticatorData` equal
+  `SHA256("<TeamID>.<bundleID>")`
+- the counter in `authenticatorData` is greater than the stored one;
+  save the new value
+
+**Policy:** a missing attestation, `attestationError`, or a failed check
+should send the session to manual review, not pass it. A phone that
+doesn't support attestation is not proof of fraud, but it isn't proof of
+anything else either.
+
 ## 4. Then judge the face, server-side
 
 Passing the checks above means "this device ran this challenge and these
