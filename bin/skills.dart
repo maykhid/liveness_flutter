@@ -181,6 +181,13 @@ Future<int> runSkills(
       'liveness-flutter-server there too.',
     );
   }
+  if (targets.length > 1) {
+    out.writeln(
+      'Installed into ${targets.length} folders, one per agent found. An '
+      'agent that reads several of them may list the skills twice; use '
+      '--agent or --dir to pick one.',
+    );
+  }
   return 0;
 }
 
@@ -245,7 +252,8 @@ void _copyDirectory(Directory source, Directory destination) {
   destination.createSync(recursive: true);
   for (final entity in source.listSync()) {
     final name = entity.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
-    if (name == '.DS_Store') continue;
+    // OS and tool leftovers, such as .DS_Store or Python's __pycache__.
+    if (name.startsWith('.') || name == '__pycache__') continue;
     if (entity is Directory) {
       _copyDirectory(entity, Directory('${destination.path}/$name'));
     } else if (entity is File) {

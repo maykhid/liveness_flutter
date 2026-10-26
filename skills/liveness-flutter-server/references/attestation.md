@@ -83,8 +83,10 @@ hand-rolled CBOR and certificate parsing.
 
 **Every session, the assertion.** For `{"keyId", "assertion"}`:
 
-1. Look up the stored public key and counter for `keyId`. Unknown key:
-   review, and expect the app to register a new key.
+1. Look up the stored public key and counter for `keyId`, and check the
+   key was registered by **the same user** as the upload; a key
+   registered by someone else proves nothing about this user. Unknown
+   key: review, and expect the app to register a new key.
 2. Base64-decode the assertion and CBOR-decode it into `signature` and
    `authenticatorData`.
 3. Compute `clientDataHash = payload hash` (the package's Swift template
@@ -107,7 +109,11 @@ unsupported on some devices; the app then has no attestation to send.
   failed check: **manual review**, not a pass and not an automatic
   reject. A phone without attestation support isn't proof of fraud, and
   isn't proof of anything else either.
-- A valid attestation plus all the integrity checks: the upload is
-  genuine. The face still has to be judged (face match and server-side
+- A valid attestation plus all the integrity checks: the signed fields
+  (session ID, nonce, outcome, actions, photo hashes) came from your app
+  on a real device, so the photos are the ones that session took. The
+  unsigned fields (`confidenceScore`, everything in `metadata.metadata`,
+  photo labels, `durationMs`) are still only as honest as whoever sent
+  them, and the face still has to be judged (face match and server-side
   presentation-attack detection).
 - Log the verdict fields alongside the session for later tuning.

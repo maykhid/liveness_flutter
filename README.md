@@ -276,7 +276,9 @@ after upgrading the package.
 
 For a backend in another repository, or without Dart, copy
 `skills/liveness-flutter-server` from this repository, or use
-`npx skills add maykhid/liveness_flutter`.
+`npx skills add maykhid/liveness_flutter`. Both give you the repository's
+latest skills, which may be ahead of the version you depend on; only
+`dart run liveness_flutter:skills` matches your installed version.
 
 ---
 

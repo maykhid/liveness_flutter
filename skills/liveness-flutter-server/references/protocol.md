@@ -80,9 +80,9 @@ rebuild every hash.
 | `images`, `frames` | object[] | `action` (string or null), `kind`, `timestampMs` (milliseconds on the session's clock), `sha256` (lowercase hex of the JPEG bytes). |
 | `attestation` | string or null | Whatever the app's attestor returned. Often a JSON string; see [attestation.md](attestation.md). |
 | `videoPath` | string or null | A path on the phone. Meaningless to the server except as "a video was recorded". |
-| `startedAt`, `finishedAt` | string | ISO 8601 from the phone's clock. Don't trust for expiry. |
-| `durationMs` | int | |
-| `metadata` | object | Diagnostics, below. Keys can be added in any release; ignore unknown ones. |
+| `startedAt`, `finishedAt` | string | ISO 8601 from the phone's clock, in the phone's **local time with no UTC offset** (e.g. `2026-10-26T13:00:00.000`). The sample above shows `Z` only because it was built in UTC. Don't parse these as UTC and don't use them for expiry; use your own receive time. |
+| `durationMs` | int | Session length. Not signed. |
+| `metadata` | object | Diagnostics, below. Keys can be added in any release; ignore unknown ones. Not signed by the attestation. |
 
 ### Enum values
 

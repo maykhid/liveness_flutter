@@ -45,11 +45,14 @@ ships no ML model and no backend.
   `if (!context.mounted) return;` and pop only when
   `ModalRoute.of(context)?.isCurrent ?? false`.
 - **Include at least one motion action**: `blink`, `nod`, `openMouth` or
-  `drawCircleWithNose`. Pose-only actions (`smile`, `tiltLeft`,
-  `tiltRight`, `lookUp`, `lookDown`) can be faked with a photo tilted at
-  the right moment.
+  `drawCircleWithNose`. Every other action is pose-only (`smile`,
+  `fullTeethSmile`, `lookLeft`, `lookRight`, `lookUp`, `lookDown`,
+  `tiltLeft`, `tiltRight`, `eyesClosed`) and can be faked with a photo
+  tilted at the right moment.
 - **Randomize.** Use `shuffleActions: true`, or `randomActionCount` to pick
   N actions from a pool, or (best) a server-issued `LivenessChallenge`.
+  `randomActionCount` doesn't guarantee a motion action unless every
+  action in the pool is one.
 - **Never build the challenge in the app for anything real.** A challenge
   only binds the session when the server made it and checks it later.
   With a challenge set, pass `actions: const []`: the challenge's actions
@@ -144,7 +147,9 @@ isn't installed, the package's `doc/server_verification.md` covers it.
 
 - `flutter analyze` passes.
 - Every navigation in `onResult` is guarded by `context.mounted`.
-- At least one motion action is in the list (or in the server's pool).
+- Every session gets at least one motion action: it's in the fixed list,
+  every action in a `randomActionCount` pool is one, or the server
+  guarantees one in each challenge.
 - High-stakes flows capture images, use a server challenge and upload.
 - For tuning on a real device, `showDebugOverlay: true` shows live head
   angles, eye and smile probabilities, brightness and a box where ML Kit

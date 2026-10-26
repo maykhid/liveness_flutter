@@ -40,23 +40,25 @@ Guidance:
 ```dart
 import 'package:liveness_flutter/liveness_flutter.dart';
 
-// Three random actions from a pool, in random order, every session.
+// Two random actions from a pool, in random order, every session. Every
+// action in the pool is a motion action, so every pick includes one.
 const pooled = LivenessConfig(
   actions: [
     LivenessAction.blink,
     LivenessAction.nod,
-    LivenessAction.smile,
-    LivenessAction.lookLeft,
-    LivenessAction.lookRight,
+    LivenessAction.openMouth,
   ],
-  randomActionCount: 3,
+  randomActionCount: 2,
   capture: {CaptureType.images},
 );
 ```
 
-A random pick from a pool can come out with no motion action. If that
-matters, put only motion actions in the pool, use a fixed list with
-`shuffleActions`, or let the server choose.
+`randomActionCount` shuffles the pool and takes the first N, so a pool
+that mixes motion and pose actions can come out with no motion action
+(two motion actions in a pool of five, three picked: about 1 session in
+10). To mix them safely, use a fixed list that includes a motion action
+with `shuffleActions: true`, or let the server choose, guaranteeing one
+motion action per challenge.
 
 ## Timing
 

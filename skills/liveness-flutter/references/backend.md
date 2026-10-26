@@ -24,7 +24,7 @@ A multipart POST with progress, timeouts and retries:
 | `onProgress` | null | `(sentBytes, totalBytes)`. Uploads with photos can be several MB, so show progress. |
 | `onResponse` | null | Sees the final response, including error statuses. |
 | `timeout` | 60 s | Per attempt. |
-| `maxRetries` | 0 | Retries network errors, timeouts and 5xx with exponential backoff. 4xx is never retried. |
+| `maxRetries` | 0 | Retries network errors, timeouts and 5xx with exponential backoff. 4xx is never retried. A retry resends the same session and nonce, so the server must answer a repeat of the same upload with its first verdict rather than reject it as a reused nonce. |
 | `retryDelay` | 1 s | Doubles each retry. |
 | `client` | null | Your own `http.Client` (or a `MockClient` in tests). |
 | `imageFieldName`, `frameFieldName`, `videoFieldName`, `metadataFieldName` | `images`, `frames`, `video`, `metadata` | Rename the multipart parts. |
@@ -74,29 +74,37 @@ class _VerifyButtonState extends State<VerifyButton> {
 
   Future<void> _verify() async {
     final result = await widget.openLivenessPage(context);
+    // The user may have left this screen while the check ran.
+    if (!mounted) return;
     if (result == null || !result.success) {
       setState(() => _message = result == null ? null : 'Not verified');
       return;
     }
     _progress.value = 0;
+    String message;
     try {
       await HttpLivenessUploader(
         endpoint: widget.endpoint,
         headers: {'Authorization': 'Bearer ${widget.authToken}'},
+        // Safe only because the server answers a repeat of the same
+        // upload with its first verdict (see the server skill).
         maxRetries: 2,
-        onProgress: (sent, total) => _progress.value = sent / total,
+        onProgress: (sent, total) {
+          if (mounted) _progress.value = sent / total;
+        },
       ).upload(result);
-      _message = 'Submitted. We will confirm shortly.';
+      message = 'Submitted. We will confirm shortly.';
     } on LivenessUploadException catch (e) {
-      _message = 'The server refused it (HTTP ${e.statusCode}).';
+      message = 'The server refused it (HTTP ${e.statusCode}).';
     } on TimeoutException {
-      _message = 'The upload timed out. Check your connection.';
+      message = 'The upload timed out. Check your connection.';
     } catch (e) {
-      _message = 'The upload failed.';
-    } finally {
-      _progress.value = null;
-      if (mounted) setState(() {});
+      message = 'The upload failed.';
     }
+    // The upload can outlive this screen; the notifier is gone by then.
+    if (!mounted) return;
+    _progress.value = null;
+    setState(() => _message = message);
   }
 
   @override

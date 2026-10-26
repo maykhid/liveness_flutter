@@ -113,7 +113,9 @@ their documentation describes, and check that the hash inside matches
 `payload_hash(meta)`. The package never implements the platform APIs
 itself.
 
-`metadata.attestationError` is set when the attestor failed or timed out
+`metadata.metadata.attestationError` (the package's diagnostics sit in
+their own `metadata` key inside the `metadata` field) is set when the
+attestor failed or timed out
 (15 s), or when the screen was closed before it could run. Decide whether
 that's a reject or a review.
 
@@ -338,7 +340,7 @@ of the camera. That's what these are for:
   camera. The on-device replay guard only catches static or injected
   feeds, and the color-flash challenge is a soft signal that fails in
   daylight.
-- **Review signals**: `confidenceScore`, `metadata.confidence_*`,
-  `metadata.flashChallenge` and `metadata.cameraMode`. Treat low scores as
-  "send to review", not as proof of fraud. Learn your real users'
-  distribution before enforcing thresholds.
+- **Review signals**: `confidenceScore`, `metadata.metadata.confidence_*`,
+  `metadata.metadata.flashChallenge` and `metadata.metadata.cameraMode`.
+  Treat low scores as "send to review", not as proof of fraud. Learn
+  your real users' distribution before enforcing thresholds.

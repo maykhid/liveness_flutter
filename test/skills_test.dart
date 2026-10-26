@@ -199,6 +199,21 @@ dependencies:
     expect(result.exitCode, 0, reason: output);
   }, timeout: const Timeout(Duration(minutes: 3)));
 
+  test('the reference verifier passes its self-test', () async {
+    final python = Platform.isWindows ? 'python' : 'python3';
+    final ProcessResult result;
+    try {
+      result = await Process.run(python, [
+        '-I', '-B', // isolated, and no __pycache__ in the skill folder
+        '${_skillsDir.path}/liveness-flutter-server/references/verifier.py',
+      ]);
+    } on ProcessException {
+      markTestSkipped('$python is not installed');
+      return;
+    }
+    expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+  });
+
   test('the server test vector matches LivenessResult', () {
     Uint8List bytes(String s) => Uint8List.fromList(utf8.encode(s));
     final result = LivenessResult(
@@ -324,6 +339,7 @@ dependencies:
           isTrue,
         );
         expect('$out', contains('Updated liveness-flutter in .cursor/skills'));
+        expect('$out', contains('Installed into 2 folders'));
       },
     );
 
@@ -349,6 +365,36 @@ dependencies:
           isFalse,
         );
       }
+    });
+
+    test('leaves out OS and tool leftovers', () async {
+      final package = Directory.systemTemp.createTempSync('skills_package_');
+      addTearDown(() => package.deleteSync(recursive: true));
+      final skill = '${package.path}/skills/demo';
+      for (final file in ['SKILL.md', 'references/a.md', '.DS_Store']) {
+        File('$skill/$file').createSync(recursive: true);
+      }
+      File('$skill/references/__pycache__/a.pyc').createSync(recursive: true);
+
+      final code = await runSkills(
+        [],
+        project: project,
+        packageRoot: package,
+        out: out,
+        err: err,
+      );
+      expect(code, 0, reason: '$err');
+      final installed =
+          Directory('${project.path}/.agents/skills/demo')
+              .listSync(recursive: true)
+              .map((e) => e.path.substring(project.path.length))
+              .toList()
+            ..sort();
+      expect(installed, [
+        '/.agents/skills/demo/SKILL.md',
+        '/.agents/skills/demo/references',
+        '/.agents/skills/demo/references/a.md',
+      ]);
     });
 
     test('--list prints the skills', () async {
