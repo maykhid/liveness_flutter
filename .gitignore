@@ -25,3 +25,7 @@ CLAUDE.md
 
 # Private
 .private/
+
+# Docs site (mkdocs build output and local virtualenv)
+site/
+.venv/

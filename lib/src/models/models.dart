@@ -79,7 +79,7 @@ enum CaptureType {
   /// Timestamped JPEG frames captured at a steady rate
   /// ([LivenessConfig.frameSequenceFps]) for the whole session. Works on
   /// every device. Your backend can assemble an MP4 with one ffmpeg call —
-  /// see README.
+  /// see doc/capture_and_media.md.
   frameSequence,
 }
 
@@ -939,7 +939,7 @@ class LivenessConfig {
   /// lowers [LivenessResult.confidenceScore] by 0.35 and sets
   /// `metadata['flashChallenge'] = 'failed'` — it never fails the session
   /// on its own. Treat failures as "review", not "fraud", and decide the
-  /// weight server-side. See the README section on this feature.
+  /// weight server-side. See doc/flash_challenge.md.
   final bool enableFlashChallenge;
 
   /// Colour phases of the flash challenge that may fail while it still

@@ -1,7 +1,5 @@
 # Photos, video, and frame sequence
 
-← [Back to the README](../README.md)
-
 *You need this if* you want more evidence than one photo per action.
 
 **Capturing nothing is the default.** With an empty `capture`,

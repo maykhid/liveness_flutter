@@ -1,11 +1,9 @@
 # Agent skills
 
-← [Back to the README](../README.md)
-
 The package ships two [agent skills](https://agentskills.io) in its
 `skills/` folder: instructions that Claude Code, Codex, Cursor, GitHub
 Copilot, Gemini CLI and other coding agents load when a task calls for
-them, so the agent integrates the package the way the README describes
+them, so the agent integrates the package the way these docs describe
 instead of guessing.
 
 | Skill | Helps with |

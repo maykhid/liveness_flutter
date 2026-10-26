@@ -95,7 +95,7 @@ class HttpLivenessUploader extends LivenessUploader {
 
   /// Called as the request body is sent — drive a progress bar with
   /// `sentBytes / totalBytes`. Liveness payloads can be several MB, so
-  /// showing progress is strongly recommended (see README).
+  /// showing progress is strongly recommended (see doc/getting_started.md).
   ///
   /// Note: reports bytes handed to the network stack; on fast connections
   /// it may reach 100% slightly before the server finishes reading.
@@ -208,7 +208,7 @@ class HttpLivenessUploader extends LivenessUploader {
     }
 
     // Frame sequence: filename encodes the session timestamp so the backend
-    // can reassemble a video (see README for the ffmpeg one-liner).
+    // can reassemble a video (see doc/capture_and_media.md for the ffmpeg one-liner).
     for (var i = 0; i < result.frameSequence.length; i++) {
       final f = result.frameSequence[i];
       request.files.add(http.MultipartFile.fromBytes(

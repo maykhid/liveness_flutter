@@ -1,0 +1,83 @@
+site_name: liveness_flutter
+site_description: Face liveness checks for Flutter — free, on-device, and built for your backend.
+site_url: https://maykhid.github.io/liveness_flutter/
+repo_url: https://github.com/maykhid/liveness_flutter
+repo_name: maykhid/liveness_flutter
+edit_uri: edit/main/doc/
+
+# The guides live in doc/ so their links keep working on GitHub and pub.dev.
+docs_dir: doc
+exclude_docs: |
+  api/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Simple setup: getting_started.md
+      - Agent skills: agent_skills.md
+      - Examples: examples.md
+  - Guides:
+      - Customization: customization.md
+      - Controller: controller.md
+      - Bind sessions to your server: server_binding.md
+      - Server verification: server_verification.md
+      - Photos, video and frames: capture_and_media.md
+      - Color-flash challenge: flash_challenge.md
+      - Assisted mode: assisted_mode.md
+  - Reference:
+      - The result: result_reference.md
+      - Developer tools: developer_tools.md
+      - FAQ: faq.md
+      - Honest notes: limitations.md
+  - Changelog: https://github.com/maykhid/liveness_flutter/blob/main/CHANGELOG.md
+  - pub.dev: https://pub.dev/packages/liveness_flutter
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/maykhid/liveness_flutter
+
+validation:
+  anchors: warn
+  unrecognized_links: warn

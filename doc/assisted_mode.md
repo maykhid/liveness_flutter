@@ -1,7 +1,5 @@
 # Assisted mode: verifying someone else
 
-← [Back to the README](../README.md)
-
 *You need this if* a bank agent or field officer holds the phone and
 verifies **another person** — common in branch onboarding and doorstep
 KYC:

@@ -30,3 +30,9 @@ CLAUDE.md
 
 # README media (linked from GitHub, not needed in the package)
 screenshots/
+
+# Docs site tooling (the guides themselves stay in doc/)
+mkdocs.yml
+requirements-docs.txt
+site/
+.venv/

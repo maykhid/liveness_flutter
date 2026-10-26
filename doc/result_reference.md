@@ -1,7 +1,5 @@
 # Everything in the result
 
-← [Back to the README](../README.md)
-
 `LivenessResult`, in full:
 
 - `success`, `failureReason` — the verdict and why. Cancelled results say

@@ -1,7 +1,5 @@
 # The color-flash challenge
 
-← [Back to the README](../README.md)
-
 *You need this if* you worry about someone playing a video of a real
 person to the camera — the hardest cheap attack on any action-based check,
 because the actions in the video were real when recorded.
