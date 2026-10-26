@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ liveness_flutter
+# 🛡️ Liveness Flutter
 
 **Face liveness checks for Flutter — free, on-device, and built for *your* backend.**
 

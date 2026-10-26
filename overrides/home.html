@@ -1,0 +1,48 @@
+{% extends "main.html" %}
+
+{% block extrahead %}
+  {{ super() }}
+  <style>
+    /* The hero already says these; they stay for readers on GitHub. */
+    .md-content__inner > h1:first-of-type,
+    .md-content__inner > h1:first-of-type + p,
+    .md-content__inner > h1:first-of-type + p + blockquote { display: none; }
+  </style>
+{% endblock %}
+
+{% block tabs %}
+  {{ super() }}
+  <section class="lf-hero">
+    <div class="md-grid lf-hero__inner">
+      <div class="lf-hero__text">
+        <span class="lf-pill">Beta · v{{ config.extra.version }} · Android &amp; iOS</span>
+        <h1>Face liveness for Flutter.</h1>
+        <p class="lf-hero__lead">
+          Free, on-device, and built for <em>your</em> backend. The user
+          blinks, smiles or turns their head; the package checks a live
+          person did it and hands you the evidence.
+        </p>
+        <div class="lf-hero__actions">
+          <a href="{{ 'getting_started/' | url }}" class="md-button md-button--primary">Get started</a>
+          <a href="https://pub.dev/packages/liveness_flutter" class="md-button">View on pub.dev</a>
+        </div>
+        <div class="lf-install"><span>$</span> flutter pub add liveness_flutter</div>
+        <ul class="lf-hero__facts">
+          <li>No cloud service</li>
+          <li>No license fees</li>
+          <li>No model downloads</li>
+        </ul>
+      </div>
+      <div class="lf-hero__media">
+        <figure class="lf-phone">
+          <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/default_demo.gif" alt="The default screen: tap Verify, blink, turn left and smile inside an oval, then Passed with 100% confidence" loading="lazy">
+          <figcaption>Out of the box</figcaption>
+        </figure>
+        <figure class="lf-phone lf-phone--raised">
+          <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" alt="A fully branded account-upgrade flow: account home, intro, a face check in a circle with nod and blink steps, then verified" loading="lazy">
+          <figcaption>Fully branded</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+{% endblock %}

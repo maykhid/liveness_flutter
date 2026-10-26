@@ -1,0 +1,269 @@
+/* Brand colours: violet to cyan, matching the logo. */
+:root {
+  --lf-violet: #7c3aed;
+  --lf-cyan: #06b6d4;
+  --lf-gradient: linear-gradient(135deg, #7c3aed 0%, #4f46e5 45%, #06b6d4 100%);
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #5b21b6;
+  --md-primary-fg-color--light: #7c3aed;
+  --md-primary-fg-color--dark: #4c1d95;
+  --md-accent-fg-color: #0891b2;
+  --md-typeset-a-color: #6d28d9;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 250;
+  --md-default-bg-color: #0f0d1a;
+  --md-primary-fg-color: #1a1530;
+  --md-primary-fg-color--light: #2a2250;
+  --md-primary-fg-color--dark: #0f0d1a;
+  --md-accent-fg-color: #22d3ee;
+  --md-typeset-a-color: #a78bfa;
+  --md-code-bg-color: #17142a;
+}
+
+/* Header and tabs share the gradient in light mode, stay dark in dark mode. */
+[data-md-color-scheme="default"] .md-header,
+[data-md-color-scheme="default"] .md-tabs {
+  background: var(--lf-gradient);
+}
+
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background-color: rgba(15, 13, 26, 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(167, 139, 250, 0.15);
+}
+
+.md-banner {
+  background: #1e1b4b;
+  color: #e0e7ff;
+  text-align: center;
+  font-size: 0.7rem;
+}
+
+.md-banner a {
+  color: #67e8f9;
+  text-decoration: underline;
+}
+
+.md-typeset h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.md-typeset h2 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.md-typeset .md-button {
+  border-radius: 999px;
+  padding: 0.55em 1.4em;
+  font-weight: 600;
+}
+
+.md-typeset .md-button--primary {
+  background: var(--lf-gradient);
+  border: none;
+  color: #fff;
+}
+
+.md-typeset .md-button--primary:hover {
+  filter: brightness(1.1);
+  color: #fff;
+}
+
+/* ---------- Home hero ---------- */
+
+.lf-hero {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(60rem 30rem at 85% 10%, rgba(6, 182, 212, 0.35), transparent 60%),
+    radial-gradient(50rem 30rem at 0% 100%, rgba(124, 58, 237, 0.45), transparent 60%),
+    #120f24;
+}
+
+.lf-hero__inner {
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  padding: 3.5rem 0.8rem 3rem;
+}
+
+.lf-hero__text {
+  flex: 1 1 55%;
+}
+
+.lf-hero h1 {
+  margin: 0.6rem 0 0.8rem;
+  font-size: 2.6rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  background: linear-gradient(90deg, #fff 30%, #a5f3fc);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lf-hero__lead {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  max-width: 32rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.lf-pill {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #c4b5fd;
+  background: rgba(124, 58, 237, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+}
+
+.lf-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.4rem 0 1.2rem;
+}
+
+.lf-hero .md-button {
+  border-radius: 999px;
+  padding: 0.6em 1.5em;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.lf-hero .md-button--primary {
+  background: var(--lf-gradient);
+  border: none;
+  color: #fff;
+}
+
+.lf-hero .md-button:not(.md-button--primary) {
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.lf-hero .md-button:not(.md-button--primary):hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lf-install {
+  display: inline-block;
+  font-family: var(--md-code-font-family);
+  font-size: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #e0f2fe;
+}
+
+.lf-install span {
+  color: #67e8f9;
+  margin-right: 0.4rem;
+  user-select: none;
+}
+
+.lf-hero__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+  padding: 0;
+  margin: 1.2rem 0 0;
+  list-style: none;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.lf-hero__facts li::before {
+  content: "✓";
+  margin-right: 0.35rem;
+  color: #67e8f9;
+  font-weight: 700;
+}
+
+.lf-hero__media {
+  flex: 1 1 45%;
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+}
+
+.lf-phone {
+  margin: 0;
+  text-align: center;
+}
+
+.lf-phone img {
+  width: 11rem;
+  border-radius: 1.6rem;
+  border: 6px solid #1f1b38;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.lf-phone--raised {
+  transform: translateY(-1.2rem);
+}
+
+.lf-phone figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@media screen and (max-width: 59.9375em) {
+  .lf-hero__inner {
+    flex-direction: column;
+    padding-top: 2.5rem;
+  }
+
+  .lf-hero h1 {
+    font-size: 2rem;
+  }
+
+  .lf-phone img {
+    width: 8.5rem;
+  }
+
+  .lf-phone--raised {
+    transform: none;
+  }
+}
+
+/* ---------- Cards ---------- */
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid > .card {
+  border-radius: 0.8rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  transition: border-color 150ms, box-shadow 150ms, transform 150ms;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid > .card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0.4rem 1.2rem rgba(124, 58, 237, 0.15);
+  transform: translateY(-2px);
+}
+
+.md-typeset .grid.cards .lg {
+  color: var(--md-typeset-a-color);
+}
+
+/* Code blocks get rounded corners. */
+.md-typeset pre > code,
+.md-typeset .highlight {
+  border-radius: 0.6rem;
+}

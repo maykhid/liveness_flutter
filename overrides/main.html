@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+
+{% block announce %}
+  <strong>Beta</strong> · v{{ config.extra.version }} is out —
+  <a href="{{ config.extra.changelog }}">see what changed</a>
+{% endblock %}

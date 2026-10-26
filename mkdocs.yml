@@ -1,4 +1,4 @@
-site_name: liveness_flutter
+site_name: Liveness Flutter
 site_description: Face liveness checks for Flutter — free, on-device, and built for your backend.
 site_url: https://maykhid.github.io/liveness_flutter/
 repo_url: https://github.com/maykhid/liveness_flutter
@@ -12,7 +12,19 @@ exclude_docs: |
 
 theme:
   name: material
+  custom_dir: overrides
+  logo: assets/images/logo.svg
+  favicon: assets/images/logo.svg
+  font:
+    text: Inter
+    code: JetBrains Mono
   features:
+    - announce.dismiss
+    - navigation.tabs
+    - navigation.instant
+    - navigation.tracking
+    - content.code.annotate
+    - content.tabs.link
     - navigation.sections
     - navigation.top
     - navigation.footer
@@ -24,22 +36,30 @@ theme:
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: teal
-      accent: teal
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: teal
-      accent: teal
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
   icon:
     repo: fontawesome/brands/github
 
+extra_css:
+  - assets/stylesheets/extra.css
+
 markdown_extensions:
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.tabbed:
+      alternate_style: true
   - admonition
   - attr_list
   - md_in_html
@@ -74,6 +94,9 @@ nav:
   - pub.dev: https://pub.dev/packages/liveness_flutter
 
 extra:
+  version: 0.6.0
+  changelog: https://github.com/maykhid/liveness_flutter/blob/main/CHANGELOG.md
+  generator: false
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/maykhid/liveness_flutter

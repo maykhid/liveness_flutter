@@ -1,37 +1,31 @@
-# liveness_flutter
+---
+template: home.html
+title: Face liveness for Flutter
+hide:
+  - navigation
+  - toc
+---
+
+# Liveness Flutter
 
 **Face liveness checks for Flutter — free, on-device, and built for *your* backend.**
-
-*Blink. Smile. Turn left. Verified.*
-
-<table>
-  <tr>
-    <td align="center">
-      <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/default_demo.gif" width="240" alt="The default screen: tap Verify, blink, turn left and smile inside an oval, then Passed with 100% confidence"/><br/>
-      <sub><b>Out of the box</b> — about 10 lines of code</sub>
-    </td>
-    <td align="center">
-      <img src="https://raw.githubusercontent.com/maykhid/liveness_flutter/main/screenshots/fintech_demo.gif" width="240" alt="A fully branded account-upgrade flow: account home, intro, a face check in a circle with nod and blink steps, then verified"/><br/>
-      <sub><b>Fully branded</b> — <a href="examples.md#a-fully-branded-kyc-flow">your design</a></sub>
-    </td>
-  </tr>
-</table>
 
 > **Beta** — tested on real Android and iOS devices; the API may still
 > change before 1.0 ([details](limitations.md#status-beta)). Anyone can
 > [open an issue](https://github.com/maykhid/liveness_flutter/issues).
 
-Add a face liveness check to your Flutter app in a few lines. The user
-blinks, smiles or turns their head when asked; the package checks a live
-person did it, then hands you the result — and the photos, if you want
-them — to send **wherever you want**.
+## A check in a few lines
+
+The user blinks, smiles or turns their head when asked; the package checks
+a live person did it, then hands you the result — and the photos, if you
+want them — to send **wherever you want**.
 
 ```dart
 LivenessDetector(
   config: const LivenessConfig(
     actions: [LivenessAction.blink, LivenessAction.smile, LivenessAction.lookLeft],
-    shuffleActions: true,          // a new order every time
-    capture: {CaptureType.images}, // photos your server can check
+    shuffleActions: true,          // (1)!
+    capture: {CaptureType.images}, // (2)!
   ),
   onResult: (result) {
     if (result.success) sendToYourServer(result);
@@ -39,38 +33,60 @@ LivenessDetector(
 )
 ```
 
-Everything runs on the phone. **No cloud service. No license fees. No
-model downloads. No account.**
+1. A new order every time, so yesterday's recording won't match today's.
+2. A photo at the peak of each action, for your server to check.
 
 **Requirements:** Flutter 3.38+ · Android 7.0+ (API 24) · iOS 15.5+
 
 ## Why this package?
 
-| | |
-|---|---|
-| **Proves a live person is there** | The user does random actions — blink, smile, turn, nod, 13 to choose from — in a new order every time, so a photo or a pre-recorded video can't follow along. |
-| **Catches common tricks on the phone** | Frozen or injected camera feeds, an unnaturally still "face", a second or swapped face, bad lighting — plus an optional screen-flash test against replayed videos. No ML model to download. |
-| **Gives your server the evidence** | A photo at the peak of each action (eyes shut for a blink), or video, with hashes and an optional server-issued challenge, so your backend can verify instead of trusting the phone. |
-| **Looks like your app** | Theme every color and word, or replace the screen with your own design — see the [branded fintech example](examples.md#a-fully-branded-kyc-flow). |
-| **Free and light** | Pure Dart plus Google's on-device ML Kit. No per-check fees, no account, no server of ours. |
+<div class="grid cards" markdown>
 
-## Is this right for you?
+-   :material-face-recognition:{ .lg .middle } **Proves a live person is there**
 
-**A great fit for** sign-up and onboarding gates, confirming it's really
-the user before a sensitive action, marketplace and gig-worker checks, and
-KYC flows where your backend also reviews the photos.
+    ---
 
-**Pair it with server checks for** anything regulated or with money on
-the line. The phone's verdict alone can be tampered with: follow the
-[server verification guide](server_verification.md) and review the
-photos server-side (face match, presentation-attack detection).
+    Random actions — blink, smile, turn, nod, 13 to choose from — in a new
+    order every time, so a photo or a pre-recorded video can't follow along.
 
-**Not the right tool if** you need *certified* liveness — for example, a
-passed ISO/IEC 30107-3 presentation-attack evaluation such as iBeta's —
-or protection against sophisticated masks and deepfakes. That takes a
-trained anti-spoof model and usually a paid provider. This package can
-[plug such a model in](server_binding.md#bring-your-own-anti-spoof-model)
-but doesn't ship one.
+-   :material-incognito-off:{ .lg .middle } **Catches common tricks**
+
+    ---
+
+    Frozen or injected camera feeds, an unnaturally still "face", a second
+    or swapped face, bad lighting — plus an optional
+    [screen-flash test](flash_challenge.md) against replayed videos.
+
+-   :material-server-security:{ .lg .middle } **Gives your server the evidence**
+
+    ---
+
+    A photo at the peak of each action, or video, with hashes and an
+    optional [server-issued challenge](server_binding.md), so your backend
+    can verify instead of trusting the phone.
+
+-   :material-palette:{ .lg .middle } **Looks like your app**
+
+    ---
+
+    Theme every color and word, or replace the screen with your own design
+    — see the [branded fintech example](examples.md#a-fully-branded-kyc-flow).
+
+-   :material-feather:{ .lg .middle } **Free and light**
+
+    ---
+
+    Pure Dart plus Google's on-device ML Kit. No per-check fees, no
+    account, no server of ours.
+
+-   :material-robot:{ .lg .middle } **Agent-ready**
+
+    ---
+
+    One command installs [agent skills](agent_skills.md) that teach your
+    coding agent the integration and the backend checks.
+
+</div>
 
 ## How it works
 
@@ -84,15 +100,68 @@ but doesn't ship one.
    score, and the photos if you asked for them.
 4. You send it to your server, which can verify it before trusting it.
 
+## Is this right for you?
+
+<div class="grid" markdown>
+
+!!! success "A great fit for"
+
+    Sign-up and onboarding gates, confirming it's really the user before a
+    sensitive action, marketplace and gig-worker checks, and KYC flows
+    where your backend also reviews the photos.
+
+!!! warning "Pair it with server checks for"
+
+    Anything regulated or with money on the line. The phone's verdict
+    alone can be tampered with: follow the
+    [server verification guide](server_verification.md) and review the
+    photos server-side (face match, presentation-attack detection).
+
+</div>
+
+!!! danger "Not the right tool if"
+
+    You need *certified* liveness — for example, a passed ISO/IEC 30107-3
+    presentation-attack evaluation such as iBeta's — or protection against
+    sophisticated masks and deepfakes. That takes a trained anti-spoof
+    model and usually a paid provider. This package can
+    [plug such a model in](server_binding.md#bring-your-own-anti-spoof-model)
+    but doesn't ship one.
+
 ## Pick your path
 
-| You want to… | Go to |
-|---|---|
-| Have an AI coding agent do the integration | **[Agent skills](agent_skills.md)** — one command |
-| Add a working liveness check to your app | **[Getting started](getting_started.md)** — about 10 minutes |
-| See every example, or run one | [Examples](examples.md) |
-| Make it look like your app (colors, text, your own screens) | [Customization](customization.md) and the [fintech example](examples.md#a-fully-branded-kyc-flow) |
-| Use it for KYC or anything with real consequences | [Bind sessions to your server](server_binding.md) |
-| Have an agent verify someone else | [Assisted mode](assisted_mode.md) |
-| Quick answers (offline? app size? masks?) | [FAQ](faq.md) |
-| Know the limits before shipping | [Honest notes](limitations.md) |
+<div class="grid cards" markdown>
+
+-   :material-rocket-launch: **[Getting started](getting_started.md)**
+
+    Add a working liveness check to your app in about 10 minutes.
+
+-   :material-robot-happy: **[Agent skills](agent_skills.md)**
+
+    Have an AI coding agent do the integration, with one command.
+
+-   :material-cellphone-check: **[Examples](examples.md)**
+
+    See every example, from 90 lines to a fully branded KYC flow.
+
+-   :material-tune: **[Customization](customization.md)**
+
+    Colors, text, your own overlay and instructions.
+
+-   :material-lock-check: **[Bind sessions to your server](server_binding.md)**
+
+    For KYC or anything with real consequences.
+
+-   :material-account-eye: **[Assisted mode](assisted_mode.md)**
+
+    An agent holds the phone and verifies someone else.
+
+-   :material-help-circle: **[FAQ](faq.md)**
+
+    Offline? App size? Masks? Quick answers.
+
+-   :material-alert-circle: **[Honest notes](limitations.md)**
+
+    Know the limits before shipping.
+
+</div>
