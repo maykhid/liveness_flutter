@@ -65,6 +65,7 @@ class HttpLivenessUploader extends LivenessUploader {
     this.frameFieldName = 'frames',
     this.videoFieldName = 'video',
     this.metadataFieldName = 'metadata',
+    this.attestationFieldName = 'attestation',
     this.onResponse,
     this.onProgress,
     this.client,
@@ -82,6 +83,10 @@ class HttpLivenessUploader extends LivenessUploader {
   final String frameFieldName;
   final String videoFieldName;
   final String metadataFieldName;
+
+  /// Text field carrying [LivenessResult.attestation], sent only when the
+  /// result has one.
+  final String attestationFieldName;
 
   /// Inspect the final server response (status code, body). Called for
   /// error statuses too, before [upload] throws; not called for 5xx
@@ -113,9 +118,11 @@ class HttpLivenessUploader extends LivenessUploader {
   final Duration retryDelay;
 
   /// Sends:
-  /// - `metadata` field: [LivenessResult.toJson] (sessionId,
+  /// - `metadata` field: [LivenessResult.evidenceJson], character for
+  ///   character: [LivenessResult.toJson] without `attestation` (sessionId,
   ///   confidenceScore, success, actions, timings, and the diagnostics under
-  ///   `metadata`)
+  ///   `metadata`). The attestation covers its SHA-256.
+  /// - `attestation` field: [LivenessResult.attestation], if any
   /// - `images[i]` files: JPEG per captured frame, named
   ///   `<action>_<kind>_<timestampMs>ms.jpg` (or `reference_<t>ms.jpg`)
   /// - `frames[i]` files: frame-sequence JPEGs (filename encodes timestamp)
@@ -185,7 +192,11 @@ class HttpLivenessUploader extends LivenessUploader {
           ..headers.addAll(headers)
           ..headers['X-Liveness-Session'] = result.sessionId;
 
-    request.fields[metadataFieldName] = jsonEncode(result.toJson());
+    request.fields[metadataFieldName] = result.evidenceJson;
+    final attestation = result.attestation;
+    if (attestation != null) {
+      request.fields[attestationFieldName] = attestation;
+    }
 
     for (var i = 0; i < result.images.length; i++) {
       final image = result.images[i];

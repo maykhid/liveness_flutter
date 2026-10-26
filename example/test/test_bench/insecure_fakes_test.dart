@@ -6,6 +6,8 @@ import 'package:liveness_flutter_example/test_bench/src/insecure_fakes.dart';
 
 void main() {
   final server = FakeChallengeServer.instance;
+  // Fixed, because the attestation covers the timestamps too.
+  final startedAt = DateTime.now();
 
   LivenessResult resultFor(
     LivenessChallenge? c, {
@@ -25,8 +27,8 @@ void main() {
                 kind: CaptureKind.peak,
               ),
             ],
-        startedAt: DateTime.now(),
-        finishedAt: DateTime.now(),
+        startedAt: startedAt,
+        finishedAt: startedAt,
         sessionId: 'LV-TEST',
         nonce: c?.nonce,
         attestation: attestation,

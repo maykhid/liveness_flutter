@@ -138,8 +138,45 @@ void main() {
       expect(() => jsonEncode(json), returnsNormally);
     });
 
+    test('evidenceJson is toJson without the attestation', () {
+      final evidence = jsonDecode(result.evidenceJson) as Map;
+      expect(evidence.containsKey('attestation'), isFalse);
+      expect(evidence['nonce'], 'n-123');
+      expect(evidence['images'], hasLength(1));
+    });
+
+    test('the payload covers every field, not just the five listed', () {
+      LivenessResult withScore(double score) => LivenessResult(
+            success: result.success,
+            completedActions: result.completedActions,
+            images: result.images,
+            startedAt: result.startedAt,
+            finishedAt: result.finishedAt,
+            sessionId: result.sessionId,
+            nonce: result.nonce,
+            confidenceScore: score,
+          );
+      expect(withScore(0.61).attestationPayload,
+          isNot(withScore(0.99).attestationPayload));
+    });
+
+    test('timestamps are UTC with a Z', () {
+      final local = LivenessResult(
+        success: true,
+        completedActions: const [],
+        startedAt: DateTime(2026, 10, 26, 13),
+        finishedAt: DateTime(2026, 10, 26, 13, 0, 5),
+      );
+      final startedAt = local.toJson()['startedAt']! as String;
+      expect(startedAt, endsWith('Z'));
+      expect(DateTime.parse(startedAt), local.startedAt.toUtc());
+    });
+
     test('attestationPayload is a simple, rebuildable string', () {
-      expect(result.attestationPayload, 'LV-1|n-123|true|blink,smile|$expectedSha');
+      final evidenceSha =
+          sha256.convert(utf8.encode(result.evidenceJson)).toString();
+      expect(result.attestationPayload,
+          'LV-1|n-123|true|blink,smile|$expectedSha|$evidenceSha');
       expect(
         result.attestationPayloadHash,
         sha256.convert(utf8.encode(result.attestationPayload)).bytes,

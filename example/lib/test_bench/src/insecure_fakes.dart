@@ -59,16 +59,16 @@ class FakeChallengeServer {
   /// What a real backend would check on upload (see the package's
   /// doc/server_verification.md). Marks the nonce as used.
   List<Check> verify(LivenessResult result) {
-    // Round-trip through JSON, as the uploader's `metadata` field would.
-    final meta =
-        jsonDecode(jsonEncode(result.toJson())) as Map<String, dynamic>;
+    // The uploader's `metadata` field, and its separate `attestation` one.
+    final raw = result.evidenceJson;
+    final meta = jsonDecode(raw) as Map<String, dynamic>;
     final files = [...result.images, ...result.frameSequence]
         .map((i) => i.bytes)
         .toList();
     return [
       ..._checkChallenge(meta),
       _checkMedia(meta, files),
-      _checkAttestation(meta),
+      _checkAttestation(meta, raw, result.attestation),
     ];
   }
 
@@ -133,8 +133,11 @@ class FakeChallengeServer {
     );
   }
 
-  Check _checkAttestation(Map<String, dynamic> meta) {
-    final token = meta['attestation'] as String?;
+  Check _checkAttestation(
+    Map<String, dynamic> meta,
+    String raw,
+    String? token,
+  ) {
     final error = (meta['metadata'] as Map)['attestationError'] as String?;
     if (token == null) {
       return Check(
@@ -154,6 +157,7 @@ class FakeChallengeServer {
       meta['success'] == true ? 'true' : 'false',
       (meta['completedActions'] as List).join(','),
       hashes.join(','),
+      sha256.convert(utf8.encode(raw)).toString(),
     ].join('|');
     final expected = 'demo:${sha256.convert(utf8.encode(payload))}';
     final ok = token == expected;

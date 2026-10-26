@@ -20,7 +20,7 @@ What each layer proves:
 |---|---|---|
 | Challenge (nonce, order, expiry) | This upload answers a challenge you issued, once, recently, in your order. | That a camera was used. |
 | Photo hashes | The files are the ones the session reported. | That they show a live person. |
-| Attestation (Play Integrity / App Attest) | The signed fields (below) came from your genuine app on a real device. | Anything about the unsigned fields, or that the face is live or the right person. |
+| Attestation (Play Integrity / App Attest) | The whole `metadata` field and the photos came, unedited, from your genuine app on a real device. | That the face is live or the right person. |
 | Face match + server-side anti-spoofing | It's the right person and not a photo, screen or mask. | (This is the actual judgment.) |
 
 The package does none of the server work and ships no anti-spoof model.
@@ -57,10 +57,16 @@ Don't describe a passing session as certified liveness.
 ### 2. Accept the upload
 
 `POST /liveness` (or whatever the app's `endpoint` is), multipart, from
-`HttpLivenessUploader`: a `metadata` field (JSON), `images[i]` and
-`frames[i]` files, an optional `video` file and an `X-Liveness-Session`
-header. Exact format and a sample payload:
+`HttpLivenessUploader`: a `metadata` field (JSON), an `attestation` field
+when the app has an attestor, `images[i]` and `frames[i]` files, an
+optional `video` file and an `X-Liveness-Session` header. Keep the
+`metadata` field's **raw bytes** as received: the attestation covers
+their hash. Exact format and a sample payload:
 [references/protocol.md](references/protocol.md).
+
+This describes liveness_flutter 0.6.0 and later. Before 0.6.0 the token
+was inside the metadata JSON, timestamps had no time zone, and the signed
+payload had five parts instead of six.
 
 ## The checks, in order
 
@@ -101,23 +107,34 @@ header. Exact format and a sample payload:
    `frameCount`: nothing missing, extra or altered. An upload with no
    photos at all gives you nothing to judge; the app must capture
    `{CaptureType.images}`.
-7. **Attestation**: rebuild the payload hash and verify the token with
-   Google or Apple. See
+7. **Attestation**: rebuild the payload hash from the parsed fields and
+   the SHA-256 of the raw `metadata` bytes, and verify the `attestation`
+   field's token with Google or Apple. See
    [references/attestation.md](references/attestation.md).
 
 ## What the attestation covers
 
-The attestation signs only these fields: `sessionId`, `nonce`,
-`success`, `completedActions`, and the `sha256` of every image and frame
-(see the test vector below). **Everything else is unsigned**:
-`confidenceScore`, all of `metadata.metadata` (`flashChallenge`,
-`cameraMode`, `analyzers`, `attestationError`, the `confidence_*`
-counters), each capture's `kind`, `action` and `timestampMs`, and
-`durationMs`. A user running your genuine app can edit those in transit
-(for example through a proxy on their own phone) without breaking the
-attestation. So unsigned fields may send a session **to review**, but
-must never be what makes it pass, and a high `confidenceScore` proves
-nothing on its own.
+The app's attestor signs
+`sessionId|nonce|success|actions|photo hashes|SHA-256 of the metadata field`.
+The last part covers **every field** in the `metadata` JSON
+(`confidenceScore`, `metadata.metadata` with `flashChallenge`,
+`cameraMode` and the counters, each photo's `kind` and `timestampMs`, and
+the rest), and the photo hashes cover the files. So with a verified
+attestation, nothing in the upload was edited after your genuine app
+produced it, even by a user intercepting their own phone's traffic.
+
+Two consequences:
+
+- **Hash the bytes you received**, never a re-encoded copy of the parsed
+  JSON. Re-encoding changes spacing, key order or number formatting and
+  the hash no longer matches.
+- **Without a verified attestation, nothing is signed.** Every field,
+  including `confidenceScore` and the flash result, is then only as
+  honest as whoever sent it. Such fields may send a session to review,
+  never make it pass.
+
+Not covered either way: the `video` file (not hashed) and HTTP headers
+other than the session ID, which must equal the signed `sessionId`.
 
 ## Deciding
 
@@ -153,12 +170,13 @@ and keep its self-test cases as unit tests.
 ## Test vector
 
 For a unit test of the payload rebuild in any language, the sample
-upload in [references/protocol.md](references/protocol.md) must give:
+upload in [references/protocol.md](references/protocol.md) (its raw
+`metadata` field and its four files) must give:
 
 - payload string:
-  `LV-0192C3D4E5F6-0A1B2C3D|9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c|true|blink,lookLeft|6b1e5f80828d2b0e6acbc3496026d3dd05163d39cb0b22ca86a360f86d69388e,80fb272a1dcf2d5f245583a1bab1f278aa62fea2a6907741ab0e8c78e37f0fef,ac991dc77af749e06be09087288c3506c629d13b1cc08faba946f73ef37225c9,f8952f8aff2a83a859aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320`
+  `LV-0192C3D4E5F6-0A1B2C3D|9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c|true|blink,lookLeft|6b1e5f80828d2b0e6acbc3496026d3dd05163d39cb0b22ca86a360f86d69388e,80fb272a1dcf2d5f245583a1bab1f278aa62fea2a6907741ab0e8c78e37f0fef,ac991dc77af749e06be09087288c3506c629d13b1cc08faba946f73ef37225c9,f8952f8aff2a83a859aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320|aa125c8dcbd7b5066c974c54c6865a6ee1c7c2fca1c394482b52f33c8f530c48`
 - SHA-256 of it (hex):
-  `7e87017d4590b7be83dd7cdf5b72ee4f0db251e75394b7324e9523099fa00190`
+  `5e858bc5c130f2cd5bef1c2e34f6229155d67be3dcfbeca0497f50271b802450`
 
 ## Mistakes to avoid
 
@@ -172,7 +190,8 @@ upload in [references/protocol.md](references/protocol.md) must give:
 - Comparing only counts of photos, or hashing re-encoded copies (hash the
   bytes as received, before any image processing).
 - Treating a missing attestation as a pass. It means "review".
-- Treating an attested upload's unsigned fields as trustworthy.
+- Hashing a re-encoded copy of the metadata instead of the raw field.
+- Trusting any field of an upload that has no verified attestation.
 - Treating a low confidence score or a failed flash challenge as proven
   fraud. They are review signals; the flash challenge is weak in daylight.
 - Storing photos longer than the product needs. They are biometric data

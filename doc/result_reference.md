@@ -19,5 +19,10 @@
 - `frameSequence` — the steady-stream photos, each with a timestamp.
 - `videoPath` — where the video file is, if you recorded one.
 - `metadata` — extras like how long each action took.
-- `toJson()` / `toString()` — a JSON-safe summary (no media bytes) and a
-  readable log block.
+- `toJson()` / `toString()` — a JSON-safe summary (no media bytes,
+  timestamps in UTC) and a readable log block.
+- `evidenceJson` — `toJson()` without `attestation`, encoded. The
+  uploader sends it as `metadata`, and the attestation covers a hash of
+  its exact bytes, so send it as it is.
+- `attestationPayload` / `attestationPayloadHash` — the string the
+  attestor signs and its SHA-256.

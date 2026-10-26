@@ -27,10 +27,12 @@ A multipart POST with progress, timeouts and retries:
 | `maxRetries` | 0 | Retries network errors, timeouts and 5xx with exponential backoff. 4xx is never retried. A retry resends the same session and nonce, so the server must answer a repeat of the same upload with its first verdict rather than reject it as a reused nonce. |
 | `retryDelay` | 1 s | Doubles each retry. |
 | `client` | null | Your own `http.Client` (or a `MockClient` in tests). |
-| `imageFieldName`, `frameFieldName`, `videoFieldName`, `metadataFieldName` | `images`, `frames`, `video`, `metadata` | Rename the multipart parts. |
+| `imageFieldName`, `frameFieldName`, `videoFieldName`, `metadataFieldName`, `attestationFieldName` | `images`, `frames`, `video`, `metadata`, `attestation` | Rename the multipart parts. |
 
 What it sends: an `X-Liveness-Session` header with the session ID; a
-`metadata` field with `jsonEncode(result.toJson())`; `images[i]` files
+`metadata` field with `result.evidenceJson` (`toJson()` without the
+attestation, as compact JSON); an `attestation` field with the token when
+there is one; `images[i]` files
 named `<action>_<kind>_<t>ms.jpg` (or `reference_<t>ms.jpg`); `frames[i]`
 files; a `video` file if recorded. It throws `LivenessUploadException`
 (`statusCode`, `body`) on a non-2xx answer and `TimeoutException` once
@@ -133,13 +135,11 @@ them gives the server fraud signals.
 Wrap dio, a presigned S3 URL, Firebase Storage, a local queue, anything:
 
 ```dart
-import 'dart:convert';
-
 import 'package:liveness_flutter/liveness_flutter.dart';
 
 LivenessUploader queuedUploader(
   Future<void> Function(String name, List<int> bytes) putFile,
-  Future<void> Function(Map<String, Object?> json) postMetadata,
+  Future<void> Function(String metadata, String? attestation) postMetadata,
 ) {
   return LivenessUploader.custom((result) async {
     for (final image in result.images) {
@@ -148,18 +148,19 @@ LivenessUploader queuedUploader(
           : '${image.action!.name}_${image.kind.name}_${image.timestampMs}ms.jpg';
       await putFile(name, image.bytes);
     }
-    // Send toJson() unchanged: it carries the nonce, the order and the
-    // SHA-256 of every photo, which the server checks.
-    await postMetadata(
-      jsonDecode(jsonEncode(result.toJson())) as Map<String, Object?>,
-    );
+    // Send evidenceJson as it is, as a string: it carries the nonce, the
+    // order and the SHA-256 of every photo, and the attestation signs a
+    // hash of these exact bytes.
+    await postMetadata(result.evidenceJson, result.attestation);
   });
 }
 ```
 
-Keep `toJson()` intact whatever the transport, and send the files'
-bytes unmodified (no re-encoding or resizing), or their hashes stop
-matching.
+Whatever the transport, send `result.evidenceJson` as a string, never
+decoded and re-encoded (that changes its bytes and breaks the
+attestation), keep the attestation token apart from it, and send the
+files' bytes unmodified (no re-encoding or resizing), or their hashes
+stop matching.
 
 Video: `result.videoPath` is a temp file. Upload or copy it in or right
 after `onResult`, then delete it or set `autoDeleteVideo: true`.
@@ -288,8 +289,10 @@ Cloud project; App Attest needs the App Attest capability and doesn't run
 on the simulator.
 
 The signed string is
-`sessionId|nonce|success|action,action,…|sha256,sha256,…` (images then
-frames, nonce empty when absent); `result.attestationPayload` and
+`sessionId|nonce|success|action,action,…|sha256,sha256,…|sha256(evidenceJson)`
+(images then frames, nonce empty when absent, and the last part is the
+hex SHA-256 of `result.evidenceJson`, so the attestation covers every
+field the server gets); `result.attestationPayload` and
 `result.attestationPayloadHash` give it to you in Dart.
 
 ## Your own anti-spoof model: `LivenessFrameAnalyzer`

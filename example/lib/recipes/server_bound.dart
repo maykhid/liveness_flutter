@@ -48,8 +48,9 @@ Future<LivenessChallenge> fetchChallenge() async {
   );
 }
 
-/// Step 3: upload. The uploader sends `result.toJson()` (with the nonce and
-/// a SHA-256 of every photo), the photos, and an X-Liveness-Session header.
+/// Step 3: upload. The uploader sends `result.evidenceJson` (with the nonce
+/// and a SHA-256 of every photo), the attestation token if there is one,
+/// the photos, and an X-Liveness-Session header.
 Future<String> uploadResult(LivenessResult result) async {
   if (backendUrl.isEmpty) return 'No BACKEND_URL, so nothing was uploaded.';
   try {

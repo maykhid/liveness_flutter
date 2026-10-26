@@ -2,8 +2,9 @@
 
 What the app sends, field by field. This describes the package's built-in
 `HttpLivenessUploader`. An app using `LivenessUploader.custom` can send
-anything; ask what it sends, and insist it keeps `result.toJson()` and the
-file bytes unchanged.
+anything; ask what it sends, and insist it sends `result.evidenceJson`
+character for character, `result.attestation` separately, and the file
+bytes unchanged. This is the 0.6.0+ format.
 
 ## The request
 
@@ -13,13 +14,15 @@ file bytes unchanged.
 | Part | Kind | Content |
 |---|---|---|
 | `X-Liveness-Session` | header | The session ID, same as `metadata.sessionId`. |
-| `metadata` | text field | `LivenessResult.toJson()` as JSON (below). |
+| `metadata` | text field | `LivenessResult.evidenceJson`: `toJson()` without `attestation`, as compact JSON (below). Keep its raw bytes; the attestation covers their SHA-256. |
+| `attestation` | text field | The app's attestor token, only when there is one. Often a JSON string; see [attestation.md](attestation.md). |
 | `images[0]`, `images[1]`, … | files | One JPEG per photo, in the order of `metadata.images`. Named `<action>_<kind>_<timestampMs>ms.jpg`, or `reference_<timestampMs>ms.jpg`. |
 | `frames[0]`, `frames[1]`, … | files | Frame-sequence JPEGs, in the order of `metadata.frames`. Named `frame_0000_<timestampMs>ms.jpg`. |
 | `video` | file | The session recording, if captured. Its container format depends on the platform. Not hashed in the metadata, so it carries no integrity guarantee. |
 
 The part names can be renamed by the app (`imageFieldName`,
-`frameFieldName`, `videoFieldName`, `metadataFieldName`). The literal
+`frameFieldName`, `videoFieldName`, `metadataFieldName`,
+`attestationFieldName`). The literal
 brackets are part of the field name: many frameworks keep `images[0]` as
 the name (multer's `upload.any()`, FastAPI/Starlette's form, Go's
 `multipart.Reader`); some (PHP, `qs`-style parsers) turn them into arrays.
@@ -30,8 +33,8 @@ MB. Set body limits accordingly.
 
 ## The `metadata` JSON
 
-A sample (the test vector used in [../SKILL.md](../SKILL.md); real photo
-hashes are of real JPEG bytes):
+A sample, pretty-printed for reading (the test vector used in
+[../SKILL.md](../SKILL.md); real photo hashes are of real JPEG bytes):
 
 ```json
 {
@@ -55,13 +58,19 @@ hashes are of real JPEG bytes):
     {"action": null, "kind": "sequence", "timestampMs": 125,
      "sha256": "f8952f8aff2a83a859aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320"}
   ],
-  "attestation": null,
   "videoPath": null,
   "startedAt": "2026-10-26T12:00:00.000Z",
   "finishedAt": "2026-10-26T12:00:04.250Z",
   "durationMs": 4250,
   "metadata": {"blink_ms": 890, "lookLeft_ms": 1240, "cameraMode": "selfService"}
 }
+```
+
+On the wire the field is compact JSON. These are the sample's exact
+characters, the ones to hash in a test:
+
+```text
+{"sessionId":"LV-0192C3D4E5F6-0A1B2C3D","nonce":"9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c","success":true,"confidenceScore":0.97,"completedActions":["blink","lookLeft"],"failureReason":null,"imageCount":3,"frameCount":1,"images":[{"action":null,"kind":"reference","timestampMs":420,"sha256":"6b1e5f80828d2b0e6acbc3496026d3dd05163d39cb0b22ca86a360f86d69388e"},{"action":"blink","kind":"peak","timestampMs":1310,"sha256":"80fb272a1dcf2d5f245583a1bab1f278aa62fea2a6907741ab0e8c78e37f0fef"},{"action":"lookLeft","kind":"peak","timestampMs":2875,"sha256":"ac991dc77af749e06be09087288c3506c629d13b1cc08faba946f73ef37225c9"}],"frames":[{"action":null,"kind":"sequence","timestampMs":125,"sha256":"f8952f8aff2a83a859aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320"}],"videoPath":null,"startedAt":"2026-10-26T12:00:00.000Z","finishedAt":"2026-10-26T12:00:04.250Z","durationMs":4250,"metadata":{"blink_ms":890,"lookLeft_ms":1240,"cameraMode":"selfService"}}
 ```
 
 In this vector the "photos" are the UTF-8 bytes of `reference-photo`,
@@ -78,11 +87,10 @@ rebuild every hash.
 | `failureReason` | string or null | See the list below. |
 | `imageCount`, `frameCount` | int | Lengths of `images` and `frames`. |
 | `images`, `frames` | object[] | `action` (string or null), `kind`, `timestampMs` (milliseconds on the session's clock), `sha256` (lowercase hex of the JPEG bytes). |
-| `attestation` | string or null | Whatever the app's attestor returned. Often a JSON string; see [attestation.md](attestation.md). |
 | `videoPath` | string or null | A path on the phone. Meaningless to the server except as "a video was recorded". |
-| `startedAt`, `finishedAt` | string | ISO 8601 from the phone's clock, in the phone's **local time with no UTC offset** (e.g. `2026-10-26T13:00:00.000`). The sample above shows `Z` only because it was built in UTC. Don't parse these as UTC and don't use them for expiry; use your own receive time. |
-| `durationMs` | int | Session length. Not signed. |
-| `metadata` | object | Diagnostics, below. Keys can be added in any release; ignore unknown ones. Not signed by the attestation. |
+| `startedAt`, `finishedAt` | string | ISO 8601 in UTC with a `Z`, from the phone's clock. The phone's clock can be wrong: don't use these for expiry; use your own receive time. (Before 0.6.0 they were local time with no offset.) |
+| `durationMs` | int | Session length. |
+| `metadata` | object | Diagnostics, below. Keys can be added in any release; ignore unknown ones. |
 
 ### Enum values
 
@@ -124,9 +132,10 @@ appear in minor releases.
 Log the counters with each decision. They are the raw material for
 learning what normal looks like before enforcing thresholds.
 
-## Rebuilding the hash list in other languages
+## Rebuilding the payload in other languages
 
-Python is in [verifier.py](verifier.py). TypeScript (Node):
+Python is in [verifier.py](verifier.py). TypeScript (Node), where
+`rawMetadata` is the `metadata` field's bytes as received:
 
 ```ts
 import { createHash } from "node:crypto";
@@ -144,8 +153,9 @@ interface LivenessMeta {
 export const sha256Hex = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
-/** The string the app's attestor signed, and its SHA-256. */
-export function payloadHash(meta: LivenessMeta): Buffer {
+/** The SHA-256 the app's attestor signed. */
+export function payloadHash(rawMetadata: Uint8Array): Buffer {
+  const meta = JSON.parse(Buffer.from(rawMetadata).toString("utf8")) as LivenessMeta;
   const hashes = [...meta.images, ...meta.frames].map((c) => c.sha256);
   const payload = [
     meta.sessionId,
@@ -153,6 +163,7 @@ export function payloadHash(meta: LivenessMeta): Buffer {
     meta.success ? "true" : "false",
     meta.completedActions.join(","),
     hashes.join(","),
+    sha256Hex(rawMetadata), // the raw bytes, never JSON.stringify(meta)
   ].join("|");
   return createHash("sha256").update(payload, "utf8").digest();
 }
@@ -173,6 +184,7 @@ package liveness
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 )
 
@@ -192,8 +204,13 @@ type Meta struct {
 	Frames           []Capture `json:"frames"`
 }
 
-// PayloadHash is the SHA-256 the app's attestor signed.
-func PayloadHash(m Meta) [32]byte {
+// PayloadHash is the SHA-256 the app's attestor signed. raw is the
+// metadata field's bytes as received.
+func PayloadHash(raw []byte) ([32]byte, error) {
+	var m Meta
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return [32]byte{}, err
+	}
 	hashes := make([]string, 0, len(m.Images)+len(m.Frames))
 	for _, c := range append(append([]Capture{}, m.Images...), m.Frames...) {
 		hashes = append(hashes, c.SHA256)
@@ -210,11 +227,12 @@ func PayloadHash(m Meta) [32]byte {
 		m.SessionID, nonce, success,
 		strings.Join(m.CompletedActions, ","),
 		strings.Join(hashes, ","),
+		FileHash(raw), // the raw bytes, never a re-marshalled copy
 	}, "|")
-	return sha256.Sum256([]byte(payload))
+	return sha256.Sum256([]byte(payload)), nil
 }
 
-// FileHash is the lowercase hex SHA-256 of an uploaded file's bytes.
+// FileHash is the lowercase hex SHA-256 of some bytes.
 func FileHash(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])

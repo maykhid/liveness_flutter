@@ -490,16 +490,27 @@ class LivenessResult {
 
   /// The exact string an attestor signs (via its SHA-256), easy to rebuild
   /// server-side:
-  /// `sessionId|nonce|success|action,action,…|sha256,sha256,…`, where the
-  /// hashes are those of [images] then [frameSequence], in order, and a
-  /// missing nonce is empty.
+  /// `sessionId|nonce|success|action,action,…|sha256,sha256,…|evidence`,
+  /// where the hashes are those of [images] then [frameSequence], in
+  /// order, a missing nonce is empty, and `evidence` is the lowercase hex
+  /// SHA-256 of the UTF-8 bytes of [evidenceJson]. That last part covers
+  /// every field of the result, so none of them can be edited in transit
+  /// without breaking the attestation.
   String get attestationPayload => [
         sessionId,
         nonce ?? '',
         success ? 'true' : 'false',
         completedActions.map((a) => a.name).join(','),
         [...images, ...frameSequence].map((i) => i.sha256Hex).join(','),
+        sha256.convert(utf8.encode(evidenceJson)).toString(),
       ].join('|');
+
+  /// [toJson] without `attestation`, encoded as JSON: the exact text the
+  /// attestation covers. `HttpLivenessUploader` sends it unchanged as the
+  /// `metadata` field, and the token as a separate `attestation` field. A
+  /// custom uploader must do the same: send these exact characters, not a
+  /// re-encoded copy, so the server can hash what it received.
+  String get evidenceJson => jsonEncode(toJson()..remove('attestation'));
 
   /// SHA-256 of [attestationPayload] (what [LivenessAttestor.attest] gets).
   Uint8List get attestationPayloadHash => Uint8List.fromList(
@@ -520,8 +531,8 @@ class LivenessResult {
         'frames': frameSequence.map((i) => i.toJson()).toList(),
         'attestation': attestation,
         'videoPath': videoPath,
-        'startedAt': startedAt.toIso8601String(),
-        'finishedAt': finishedAt.toIso8601String(),
+        'startedAt': startedAt.toUtc().toIso8601String(),
+        'finishedAt': finishedAt.toUtc().toIso8601String(),
         'durationMs': duration.inMilliseconds,
         'metadata': metadata,
       };

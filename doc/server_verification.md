@@ -53,7 +53,8 @@ Choosing actions:
 | Part | Content |
 |---|---|
 | `X-Liveness-Session` header | the session ID |
-| `metadata` field | `LivenessResult.toJson()` as JSON |
+| `metadata` field | `LivenessResult.evidenceJson`: `toJson()` without `attestation`, as compact JSON. Keep the raw bytes; the attestation covers their hash. |
+| `attestation` field | the attestor's token, only when there is one |
 | `images[i]` files | one JPEG per photo, named `<action>_<kind>_<t>ms.jpg` or `reference_<t>ms.jpg` |
 | `frames[i]` files | frame-sequence JPEGs, if captured |
 | `video` file | the recording, if captured |
@@ -63,7 +64,9 @@ Reject the session unless **all** of these hold:
 1. **Nonce.** `metadata.nonce` matches a challenge you issued that is
    unused and not expired by *your* clock (the device clock can be wrong or
    set back). Mark it used now, whatever the outcome, so it can't be
-   replayed.
+   replayed. If the app retries uploads (`maxRetries`), answer a repeat
+   of the same upload (same session ID and files) with its first verdict
+   instead of rejecting the reused nonce.
 2. **Order.** For a successful session, `metadata.completedActions` equals
    the challenge's `actions` exactly, in order.
 3. **Session ID.** The `X-Liveness-Session` header equals
@@ -81,7 +84,7 @@ Reject the session unless **all** of these hold:
 The attestor signs the SHA-256 of this exact UTF-8 string:
 
 ```
-sessionId|nonce|success|action,action,…|sha256,sha256,…
+sessionId|nonce|success|action,action,…|sha256,sha256,…|sha256(metadata)
 ```
 
 - `nonce` is empty if the session had no challenge.
@@ -89,11 +92,17 @@ sessionId|nonce|success|action,action,…|sha256,sha256,…
 - Actions are `completedActions` names, comma-separated.
 - Hashes are lowercase hex SHA-256 of every image, then every frame, in the
   order listed in `metadata.images` then `metadata.frames`.
+- The last part is the lowercase hex SHA-256 of the `metadata` field's
+  raw bytes, exactly as received. It puts every field (scores,
+  timestamps, diagnostics) under the attestation. Hash the bytes, not a
+  re-encoding of the parsed JSON: re-encoding changes them.
 
 ```python
 import hashlib
+import json
 
-def payload_hash(meta: dict) -> bytes:
+def payload_hash(metadata_raw: bytes) -> bytes:
+    meta = json.loads(metadata_raw)
     hashes = [i["sha256"] for i in meta["images"]] + \
              [f["sha256"] for f in meta["frames"]]
     payload = "|".join([
@@ -102,15 +111,21 @@ def payload_hash(meta: dict) -> bytes:
         "true" if meta["success"] else "false",
         ",".join(meta["completedActions"]),
         ",".join(hashes),
+        hashlib.sha256(metadata_raw).hexdigest(),
     ])
     return hashlib.sha256(payload.encode("utf-8")).digest()
 ```
+
+Apps before 0.6.0 signed only the first five parts and sent the token
+inside the `metadata` JSON as `attestation`. If old app versions are
+still in use, tell them apart by that key and decide whether to accept
+them while they are phased out.
 
 How the hash gets into the token depends on your attestor. For example,
 pass it (base64 or hex, your choice) as Play Integrity's `requestHash`, or
 as App Attest's client data hash. Verify the token with Google or Apple as
 their documentation describes, and check that the hash inside matches
-`payload_hash(meta)`. The package never implements the platform APIs
+`payload_hash(metadata_raw)`. The package never implements the platform APIs
 itself.
 
 `metadata.metadata.attestationError` (the package's diagnostics sit in
@@ -295,14 +310,14 @@ new one.
 
 ### Check the token on your server
 
-Parse `metadata.attestation` as JSON and rebuild `payload_hash(meta)`
-(section 3). Then:
+Parse the `attestation` field as JSON and rebuild
+`payload_hash(metadata_raw)` (section 3). Then:
 
 **Android** (`"platform": "android"`): send the token to Google's
 `decodeIntegrityToken` API for your package name, authenticated with the
 service account, and check the decoded payload:
 
-- `requestDetails.requestHash` equals `payload_hash(meta).hex()`
+- `requestDetails.requestHash` equals `payload_hash(metadata_raw).hex()`
 - `requestDetails.requestPackageName` is your app
 - `requestDetails.timestampMillis` is within the last few minutes
 - `appIntegrity.appRecognitionVerdict` is `PLAY_RECOGNIZED`
@@ -315,7 +330,7 @@ stored for `keyId` at registration, decode the assertion (CBOR with
 `signature` and `authenticatorData`), and check, following Apple's
 "Validating apps that connect to your server" guide:
 
-- `nonce = SHA256(authenticatorData + payload_hash(meta))`, and the
+- `nonce = SHA256(authenticatorData + payload_hash(metadata_raw))`, and the
   signature verifies against `nonce` with the stored public key
 - the first 32 bytes of `authenticatorData` equal
   `SHA256("<TeamID>.<bundleID>")`

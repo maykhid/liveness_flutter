@@ -36,14 +36,15 @@ class Captured {
   http.Request? request;
   String get body => utf8.decode(request!.bodyBytes, allowMalformed: true);
 
+  /// A multipart text field, or null when it wasn't sent.
+  String? field(String name) => RegExp(
+        'name="$name"\r\n\r\n(.*?)\r\n--',
+        dotAll: true,
+      ).firstMatch(body)?.group(1);
+
   /// The JSON in the multipart `metadata` field.
-  Map<String, Object?> get metadata {
-    final match = RegExp(
-      r'name="metadata"\r\n\r\n(.*?)\r\n--',
-      dotAll: true,
-    ).firstMatch(body);
-    return jsonDecode(match!.group(1)!) as Map<String, Object?>;
-  }
+  Map<String, Object?> get metadata =>
+      jsonDecode(field('metadata')!) as Map<String, Object?>;
 }
 
 void main() {
@@ -73,6 +74,12 @@ void main() {
       expect((m['metadata'] as Map)['blink_ms'], 640);
     });
 
+    test('metadata is evidenceJson, character for character', () {
+      expect(captured.field('metadata'), sampleResult().evidenceJson);
+      expect(captured.metadata.containsKey('attestation'), isFalse);
+      expect(captured.field('attestation'), isNull);
+    });
+
     test('image file names carry action, kind and timestamp', () {
       expect(captured.body, contains('filename="reference_120ms.jpg"'));
       expect(captured.body, contains('filename="blink_peak_812ms.jpg"'));
@@ -83,6 +90,33 @@ void main() {
       expect(headers['X-Liveness-Session'], 'LV-0000000000AB-12345678');
       expect(headers['Authorization'], 'Bearer t');
     });
+  });
+
+  test('U1 the attestation goes in its own field', () async {
+    final captured = Captured();
+    final r = sampleResult();
+    final attested = LivenessResult(
+      success: r.success,
+      completedActions: r.completedActions,
+      images: r.images,
+      startedAt: r.startedAt,
+      finishedAt: r.finishedAt,
+      confidenceScore: r.confidenceScore,
+      sessionId: r.sessionId,
+      metadata: r.metadata,
+      attestation: '{"platform":"android","token":"t"}',
+    );
+    await HttpLivenessUploader(
+      endpoint: Uri.parse('https://api.example.com/liveness'),
+      client: MockClient((request) async {
+        captured.request = request;
+        return http.Response('{}', 200);
+      }),
+    ).upload(attested);
+    expect(captured.field('attestation'), attested.attestation);
+    expect(captured.field('metadata'), attested.evidenceJson);
+    // Adding the token doesn't change what it signs.
+    expect(attested.evidenceJson, r.evidenceJson);
   });
 
   group('U2 HTTP errors, timeout and retries', () {

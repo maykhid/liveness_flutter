@@ -48,7 +48,8 @@ draws a green box where ML Kit sees the face.
 | `result.images` is empty | `capture` doesn't include `CaptureType.images`. |
 | `videoPath` is null with `CaptureType.video` | The device couldn't record and analyse at once: `metadata['videoUnavailable'] == true`. Probe with `LivenessCapabilities.supportsVideoCapture()` and use `frameSequence` there. |
 | Out-of-memory crashes on cheap Android phones | Too many frames held in memory. Lower `frameSequenceFps`, `frameSequenceMaxFrames` or `maxImageDimension`. |
-| The server's hash check fails | Files were re-encoded, resized or renamed in a way that lost the mapping, or `toJson()` was altered. Send bytes and metadata unchanged. |
+| The server's hash check fails | Files were re-encoded, resized or renamed in a way that lost the mapping. Send the bytes unchanged. |
+| The attestation is valid but the server's payload check fails | The `metadata` field isn't `result.evidenceJson` byte for byte: a custom uploader decoded and re-encoded it, or built it from `toJson()`. Or the server parsed the JSON before hashing it, or runs against a pre-0.6.0 app that signs the 5-part payload. |
 | `attestation` is null | `metadata['attestationError']` says why: the attestor threw, took over 15 s, or the screen closed before it ran. |
 
 ## Reporting a device bug

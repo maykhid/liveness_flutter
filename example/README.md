@@ -96,8 +96,9 @@ local test:
 npx http-echo-server 8080
 ```
 
-Fields sent: `metadata` (`LivenessResult.toJson()`: session ID, confidence,
-actions, SHA-256 of every photo), `images[i]` (JPEGs named like
+Fields sent: `metadata` (`LivenessResult.evidenceJson`: session ID,
+confidence, actions, SHA-256 of every photo), `attestation` (if an
+attestor is set), `images[i]` (JPEGs named like
 `blink_peak_812ms.jpg`), `frames[i]` (if captured), `video` (if recorded),
 and an `X-Liveness-Session` header. A non-2xx answer makes the upload throw
 `LivenessUploadException`.

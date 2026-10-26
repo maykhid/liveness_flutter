@@ -7,6 +7,8 @@ Run `python3 verifier.py` to execute the self-test.
 What this covers: issuing challenges and verifying an upload's shape,
 nonce, session ID, outcome, action order, photo hashes and the app's
 review signals, idempotently, so a retried upload gets the same answer.
+It expects the liveness_flutter 0.6.0+ upload: a `metadata` field holding
+`LivenessResult.evidenceJson` and a separate `attestation` field.
 What it does not: verifying the Play Integrity or App Attest token itself
 (pass your own `verify_attestation`, see attestation.md), face matching,
 and server-side presentation-attack detection. A "pass" here means the
@@ -153,8 +155,13 @@ def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def attestation_payload(meta: dict) -> str:
-    """The exact string the app's attestor signed (via its SHA-256)."""
+def attestation_payload(meta: dict, metadata_raw: bytes) -> str:
+    """The exact string the app's attestor signed (via its SHA-256).
+
+    `metadata_raw` is the `metadata` field's bytes exactly as received.
+    Hash those bytes, never a re-encoded copy of the parsed JSON: the last
+    part of the payload is what binds every field to the attestation.
+    """
     hashes = [c["sha256"] for c in meta["images"]] + \
              [c["sha256"] for c in meta["frames"]]
     return "|".join([
@@ -163,18 +170,20 @@ def attestation_payload(meta: dict) -> str:
         "true" if meta["success"] else "false",
         ",".join(meta["completedActions"]),
         ",".join(hashes),
+        sha256_hex(metadata_raw),
     ])
 
 
-def payload_hash(meta: dict) -> bytes:
-    return hashlib.sha256(attestation_payload(meta).encode("utf-8")).digest()
+def payload_hash(meta: dict, metadata_raw: bytes) -> bytes:
+    payload = attestation_payload(meta, metadata_raw)
+    return hashlib.sha256(payload.encode("utf-8")).digest()
 
 
-def upload_digest(meta: dict, images: list[bytes], frames: list[bytes]) -> str:
+def upload_digest(metadata_raw: bytes, images: list[bytes],
+                  frames: list[bytes]) -> str:
     """Identifies one exact upload, so a retry can be told from a replay."""
-    canonical = json.dumps(meta, sort_keys=True, separators=(",", ":"))
-    files = ",".join(sha256_hex(b) for b in images + frames)
-    return sha256_hex(f"{canonical}|{files}".encode("utf-8"))
+    parts = [sha256_hex(metadata_raw)] + [sha256_hex(b) for b in images + frames]
+    return sha256_hex(",".join(parts).encode("utf-8"))
 
 
 # --- Shape --------------------------------------------------------------------
@@ -212,7 +221,6 @@ def shape_problems(meta: object) -> list[str]:
     need("imageCount", _is_int, "an integer")
     need("frameCount", _is_int, "an integer")
     need("durationMs", lambda v: _is_int(v) and v >= 0, "a non-negative integer")
-    need("attestation", lambda v: v is None or isinstance(v, str), "a string or null")
     need("metadata", lambda v: v is None or isinstance(v, dict), "an object")
     for key in ("images", "frames"):
         captures = meta.get(key)
@@ -234,7 +242,8 @@ def shape_problems(meta: object) -> list[str]:
 # --- Verification -----------------------------------------------------------
 
 def verify_upload(
-    meta: object,
+    metadata_raw: bytes,
+    attestation: Optional[str],
     images: list[bytes],
     frames: list[bytes],
     session_header: Optional[str],
@@ -250,9 +259,10 @@ def verify_upload(
     """Checks one upload. Safe to call again for a retried upload: the
     same upload gets the verdict it got the first time.
 
-    `meta` is the parsed `metadata` field (LivenessResult.toJson()).
-    `images[i]` / `frames[i]` are the bytes of the `images[i]` /
-    `frames[i]` parts, exactly as received. `verify_attestation(token,
+    `metadata_raw` is the `metadata` field's bytes and `attestation` the
+    `attestation` field's text (None when absent). `images[i]` /
+    `frames[i]` are the bytes of the `images[i]` / `frames[i]` parts. All
+    exactly as received. `verify_attestation(token,
     payload_hash)` returns True when the platform token is valid for that
     hash. With `require_attestation` (the default), an upload without a
     verified attestation is never more than "review". Set it to False only
@@ -262,6 +272,12 @@ def verify_upload(
     now = now or datetime.now(timezone.utc)
 
     # 0. Shape. A malformed upload is rejected without touching the nonce.
+    try:
+        meta = json.loads(metadata_raw)
+    except (ValueError, TypeError):
+        return Verdict("reject", ["metadata is not valid JSON"])
+    if attestation is not None and not isinstance(attestation, str):
+        return Verdict("reject", ["attestation must be text"])
     problems = shape_problems(meta)
     if problems:
         return Verdict("reject", problems)
@@ -274,21 +290,23 @@ def verify_upload(
     if not nonce:
         return Verdict("reject", ["no nonce: the app must use a server challenge"])
     state, challenge = store.claim(nonce, user_id, meta["sessionId"],
-                                   upload_digest(meta, images, frames))
+                                   upload_digest(metadata_raw, images, frames))
     if challenge is None:
         return Verdict("reject", ["unknown nonce, another user's nonce, "
                                   "or a different upload on a used nonce"])
     if state == "repeat" and challenge.verdict is not None:
         return challenge.verdict
 
-    verdict = _check(meta, images, frames, session_header, challenge, now,
+    verdict = _check(meta, metadata_raw, attestation, images, frames,
+                     session_header, challenge, now,
                      verify_attestation, require_attestation, upload_grace,
                      review_below_confidence, review_assisted)
     store.save_verdict(nonce, verdict)
     return verdict
 
 
-def _check(meta, images, frames, session_header, challenge, now,
+def _check(meta, metadata_raw, token, images, frames, session_header,
+           challenge, now,
            verify_attestation, require_attestation, upload_grace,
            review_below_confidence, review_assisted) -> Verdict:
     rejects: list[str] = []
@@ -324,19 +342,20 @@ def _check(meta, images, frames, session_header, challenge, now,
 
     # 6. Attestation: missing or invalid means review, never pass.
     diagnostics = meta.get("metadata") or {}
-    token = meta["attestation"]
     if verify_attestation is None:
         if require_attestation:
             reviews.append("no attestation check configured")
     elif not token:
         reviews.append("no attestation: "
                        f"{diagnostics.get('attestationError', 'not sent')}")
-    elif not rejects and not verify_attestation(token, payload_hash(meta)):
+    elif not rejects and not verify_attestation(
+            token, payload_hash(meta, metadata_raw)):
         reviews.append("attestation did not verify")
 
-    # Review signals. None of these are covered by the attestation: they
-    # are only as honest as the app that sent them, so they can send a
-    # session to review but never make one pass.
+    # Review signals. They come from the app: a verified attestation covers
+    # them (through the hash of the raw metadata), but without one they are
+    # only as honest as whoever sent them, so they can send a session to
+    # review and never make one pass on their own.
     photographed = {c["action"] for c in meta["images"]
                     if c["kind"] in ("peak", "completion")}
     missing = [a for a in meta["completedActions"] if a not in photographed]
@@ -362,44 +381,38 @@ def _check(meta, images, frames, session_header, challenge, now,
 
 # --- Self-test --------------------------------------------------------------
 
-_VECTOR_META = json.loads("""
-{
-  "sessionId": "LV-0192C3D4E5F6-0A1B2C3D",
-  "nonce": "9f2c4e6a8b0d1f3e5a7c9e1b3d5f7a9c",
-  "success": true,
-  "confidenceScore": 0.97,
-  "completedActions": ["blink", "lookLeft"],
-  "failureReason": null,
-  "imageCount": 3,
-  "frameCount": 1,
-  "images": [
-    {"action": null, "kind": "reference", "timestampMs": 420,
-     "sha256": "6b1e5f80828d2b0e6acbc3496026d3dd05163d39cb0b22ca86a360f86d69388e"},
-    {"action": "blink", "kind": "peak", "timestampMs": 1310,
-     "sha256": "80fb272a1dcf2d5f245583a1bab1f278aa62fea2a6907741ab0e8c78e37f0fef"},
-    {"action": "lookLeft", "kind": "peak", "timestampMs": 2875,
-     "sha256": "ac991dc77af749e06be09087288c3506c629d13b1cc08faba946f73ef37225c9"}
-  ],
-  "frames": [
-    {"action": null, "kind": "sequence", "timestampMs": 125,
-     "sha256": "f8952f8aff2a83a859aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320"}
-  ],
-  "attestation": "{\\"platform\\":\\"test\\"}",
-  "videoPath": null,
-  "startedAt": "2026-10-26T12:00:00.000Z",
-  "finishedAt": "2026-10-26T12:00:04.250Z",
-  "durationMs": 4250,
-  "metadata": {"blink_ms": 890, "lookLeft_ms": 1240, "cameraMode": "selfService"}
-}
-""")
+# The `metadata` field of the sample upload in protocol.md, byte for byte.
+_VECTOR_RAW = (
+    '{"sessionId":"LV-0192C3D4E5F6-0A1B2C3D","nonce":"9f2c4e6a8b0d1f3e5a7c9'
+    'e1b3d5f7a9c","success":true,"confidenceScore":0.97,"completedActions":'
+    '["blink","lookLeft"],"failureReason":null,"imageCount":3,"frameCount":'
+    '1,"images":[{"action":null,"kind":"reference","timestampMs":420,"sha25'
+    '6":"6b1e5f80828d2b0e6acbc3496026d3dd05163d39cb0b22ca86a360f86d69388e"}'
+    ',{"action":"blink","kind":"peak","timestampMs":1310,"sha256":"80fb272a'
+    '1dcf2d5f245583a1bab1f278aa62fea2a6907741ab0e8c78e37f0fef"},{"action":"'
+    'lookLeft","kind":"peak","timestampMs":2875,"sha256":"ac991dc77af749e06'
+    'be09087288c3506c629d13b1cc08faba946f73ef37225c9"}],"frames":[{"action"'
+    ':null,"kind":"sequence","timestampMs":125,"sha256":"f8952f8aff2a83a859'
+    'aa47f33adb73441412143c3982ae0e7ec57d49d0ba7320"}],"videoPath":null,"st'
+    'artedAt":"2026-10-26T12:00:00.000Z","finishedAt":"2026-10-26T12:00:04.'
+    '250Z","durationMs":4250,"metadata":{"blink_ms":890,"lookLeft_ms":1240,'
+    '"cameraMode":"selfService"}}'
+).encode("utf-8")
+_VECTOR_META = json.loads(_VECTOR_RAW)
 _VECTOR_IMAGES = [b"reference-photo", b"blink-peak-photo", b"lookLeft-peak-photo"]
 _VECTOR_FRAMES = [b"frame-0"]
-_VECTOR_HASH = "7e87017d4590b7be83dd7cdf5b72ee4f0db251e75394b7324e9523099fa00190"
+_VECTOR_HASH = "5e858bc5c130f2cd5bef1c2e34f6229155d67be3dcfbeca0497f50271b802450"
+_VECTOR_TOKEN = '{"platform":"test"}'
+
+
+def _encode(meta: object) -> bytes:
+    return json.dumps(meta, separators=(",", ":")).encode("utf-8")
 
 
 def _self_test() -> None:
     meta = _VECTOR_META
-    assert payload_hash(meta).hex() == _VECTOR_HASH, payload_hash(meta).hex()
+    raw = _VECTOR_RAW
+    assert payload_hash(meta, raw).hex() == _VECTOR_HASH
 
     now = datetime(2026, 10, 26, 12, 0, 5, tzinfo=timezone.utc)
 
@@ -409,12 +422,16 @@ def _self_test() -> None:
                              now + timedelta(minutes=2)))
         return store
 
-    def check(m=meta, images=_VECTOR_IMAGES, frames=_VECTOR_FRAMES,
-              header=meta["sessionId"], user="user-1", store=None, at=now,
-              **options):
-        options.setdefault(
-            "verify_attestation", lambda token, h: h.hex() == _VECTOR_HASH)
-        return verify_upload(m, images, frames, header, user,
+    def check(m=raw, token=_VECTOR_TOKEN, images=_VECTOR_IMAGES,
+              frames=_VECTOR_FRAMES, header=meta["sessionId"], user="user-1",
+              store=None, at=now, **options):
+        if not isinstance(m, bytes):
+            m = _encode(m)
+        # A stand-in for Play Integrity / App Attest: valid only for the
+        # vector's payload hash.
+        options.setdefault("verify_attestation",
+                           lambda t, h: t == _VECTOR_TOKEN and h.hex() == _VECTOR_HASH)
+        return verify_upload(m, token, images, frames, header, user,
                              store or fresh_store(), at, **options)
 
     assert check().decision == "pass", check()
@@ -440,18 +457,30 @@ def _self_test() -> None:
     assert check(frames=[]).decision == "reject"
     reordered = {**meta, "completedActions": ["lookLeft", "blink"]}
     assert check(m=reordered).decision == "reject"
-    unattested = {**meta, "attestation": None}
-    assert check(m=unattested).decision == "review"
-    assert check(m=unattested, verify_attestation=None).decision == "review"
-    assert check(m=unattested, verify_attestation=None,
+
+    # Editing any field breaks the attestation, so it can't make a pass.
+    edited = raw.replace(b'"confidenceScore":0.97', b'"confidenceScore":0.99')
+    assert edited != raw
+    verdict = check(m=edited)
+    assert verdict.decision == "review", verdict
+    assert "attestation did not verify" in verdict.reasons
+    # So does re-encoding it, even with the same values: hash the raw bytes.
+    assert check(m=json.dumps(meta, indent=2).encode()).decision == "review"
+
+    assert check(token=None).decision == "review"
+    assert check(token=None, verify_attestation=None).decision == "review"
+    assert check(token=None, verify_attestation=None,
                  require_attestation=False).decision == "pass"
     low = {**meta, "confidenceScore": 0.61}
-    assert check(m=low).decision == "review"
+    assert check(m=low, verify_attestation=None,
+                 require_attestation=False).decision == "review"
 
     # Malformed uploads are rejected, not crashed on.
     reference_without_action = {k: v for k, v in meta["images"][0].items()
                                 if k != "action"}
     malformed = [
+        b"{not json",
+        b"\xff\xfe",
         None,
         [],
         {**meta, "nonce": ["x"]},
@@ -464,6 +493,7 @@ def _self_test() -> None:
     ]
     for bad in malformed:
         assert check(m=bad).decision == "reject", bad
+    assert check(token=["x"]).decision == "reject"
 
     challenge = issue_challenge(ChallengeStore(), "user-1", now=now)
     assert len(challenge["nonce"]) == 32

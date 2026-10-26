@@ -276,7 +276,9 @@ dependencies:
       r'```json\n(.*?)```',
       dotAll: true,
     ).firstMatch(protocol)!.group(1)!;
-    expect(jsonDecode(sample), jsonDecode(jsonEncode(result.toJson())));
+    expect(jsonDecode(sample), jsonDecode(result.evidenceJson));
+    // The exact bytes a server hashes, so they have to match to the byte.
+    expect(protocol, contains(result.evidenceJson));
   });
 
   group('installer', () {

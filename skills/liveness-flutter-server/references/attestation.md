@@ -9,8 +9,8 @@ most fake-camera attacks, which need a rooted or modified phone.
 
 The package only defines the hook (`LivenessAttestor` in the app). The
 app's attestor decides the token format; the package's guide (and the
-`liveness-flutter` skill) suggest this JSON string in
-`metadata.attestation`:
+`liveness-flutter` skill) suggest this JSON string, which the uploader
+sends in the `attestation` form field:
 
 - Android: `{"platform": "android", "token": "<Play Integrity token>"}`
 - iOS: `{"platform": "ios", "keyId": "<App Attest key ID>", "assertion": "<base64 CBOR>"}`
@@ -22,7 +22,7 @@ Confirm with the app's code what it actually sends.
 The attestor signed the SHA-256 of this UTF-8 string:
 
 ```
-sessionId|nonce|success|action,action,…|sha256,sha256,…
+sessionId|nonce|success|action,action,…|sha256,sha256,…|sha256(metadata)
 ```
 
 - `nonce` is empty when the session had no challenge.
@@ -30,6 +30,9 @@ sessionId|nonce|success|action,action,…|sha256,sha256,…
 - Actions are `completedActions`, comma-separated.
 - Hashes are the `sha256` values of `metadata.images`, then
   `metadata.frames`, in listed order.
+- The last part is the lowercase hex SHA-256 of the `metadata` form
+  field's raw bytes, exactly as received. Hash the bytes before parsing
+  them; parsing and re-encoding the JSON changes them.
 
 Rebuild it from the uploaded metadata *after* checking the files match
 their listed hashes, so the hash covers the photos you actually received.
@@ -105,15 +108,15 @@ unsupported on some devices; the app then has no attestation to send.
 
 ## Policy
 
-- Missing `attestation`, `metadata.metadata.attestationError`, or a
+- Missing `attestation` field, `metadata.metadata.attestationError`, or a
   failed check: **manual review**, not a pass and not an automatic
   reject. A phone without attestation support isn't proof of fraud, and
   isn't proof of anything else either.
-- A valid attestation plus all the integrity checks: the signed fields
-  (session ID, nonce, outcome, actions, photo hashes) came from your app
-  on a real device, so the photos are the ones that session took. The
-  unsigned fields (`confidenceScore`, everything in `metadata.metadata`,
-  photo labels, `durationMs`) are still only as honest as whoever sent
-  them, and the face still has to be judged (face match and server-side
-  presentation-attack detection).
+- A valid attestation plus all the integrity checks: the whole
+  `metadata` field (its hash is in the payload) and the photos came from
+  your app on a real device, unedited, so the photos are the ones that
+  session took and the scores are the ones the app computed. That says
+  the app ran, not that the face is real: a score is still the app's own
+  judgement, and the face still has to be judged (face match and
+  server-side presentation-attack detection).
 - Log the verdict fields alongside the session for later tuning.

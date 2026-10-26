@@ -231,9 +231,11 @@ try {
 }
 ```
 
-It sends a `metadata` field with `result.toJson()` (session ID,
-confidence, actions, a SHA-256 of every photo…), one file per photo named
-like `blink_peak_812ms.jpg`, and an `X-Liveness-Session` header. Any
+It sends a `metadata` field with `result.evidenceJson` (`toJson()`
+without the attestation: session ID, confidence, actions, a SHA-256 of
+every photo…), the attestor's token in an `attestation` field when there
+is one, one file per photo named like `blink_peak_812ms.jpg`, and an
+`X-Liveness-Session` header. Any
 transport works instead: `LivenessUploader.custom((result) async { ... })`
 wraps dio, S3, Firebase or anything else.
 
@@ -439,12 +441,13 @@ expected or whether the result was edited. Three hooks fix that:
   (single-use nonce, the actions in its chosen order, an expiry). The
   session runs exactly that order and echoes the nonce in
   `result.nonce`. An expired challenge fails with `challengeExpired`.
-- **Image hashes**: `result.toJson()` (and so the uploader's `metadata`)
-  lists the SHA-256 of every photo and frame, so the server can prove the
+- **Image hashes**: `result.toJson()` (and so `result.evidenceJson`, the
+  uploader's `metadata`) lists the SHA-256 of every photo and frame, so the server can prove the
   files weren't swapped.
 - **`LivenessConfig.attestor`**: plug in Play Integrity or App Attest
   through the `LivenessAttestor` interface. It signs a hash of
-  `sessionId|nonce|success|actions|image hashes`; the token lands in
+  `sessionId|nonce|success|actions|image hashes|sha256(evidenceJson)`,
+  so every field the server gets is covered; the token lands in
   `result.attestation`. The platform code lives in your app; see
   [Writing an attestor](doc/server_verification.md#3a-writing-an-attestor)
   for a Dart template, Android and iOS snippets and the server checks.

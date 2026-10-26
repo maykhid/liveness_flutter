@@ -90,9 +90,11 @@ the first action), `peak` (the clearest moment of an action, such as eyes
 shut), `completion` (the frame where it passed, used when there is no
 peak), `sequence` (a frame-sequence frame).
 
-`result.toJson()` is a JSON-safe summary without image bytes, and it is
-what the built-in uploader sends as `metadata`. `result.toString()` is a
-readable log block.
+`result.toJson()` is a JSON-safe summary without image bytes, with
+timestamps in UTC. `result.evidenceJson` is the same without
+`attestation`, encoded: it is what the built-in uploader sends as
+`metadata`, and the attestation covers its exact bytes.
+`result.toString()` is a readable log block.
 
 ### Handling each failure
 

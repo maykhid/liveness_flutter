@@ -6,9 +6,23 @@
   Classes that `extends LivenessAttestor` need no change; classes that
   `implements` it must add `Future<void> prepare() async {}` (or switch
   to `extends`).
+- The attestation payload has a sixth part: the SHA-256 (lowercase hex)
+  of the new `LivenessResult.evidenceJson`, so a valid attestation now
+  covers every field of the result, including `confidenceScore` and
+  `metadata`, not only the session, nonce, outcome, actions and photo
+  hashes. Servers that check attestations must rebuild the six-part
+  payload from the raw bytes of the `metadata` field.
+- `HttpLivenessUploader` sends `result.evidenceJson` (`toJson()` without
+  `attestation`) as the `metadata` field, and the attestation token in a
+  new `attestation` field (`attestationFieldName`). Custom uploaders
+  should do the same and send `evidenceJson` unchanged.
+- `toJson()` writes `startedAt` and `finishedAt` in UTC, ending in `Z`,
+  so servers no longer see the phone's local time without an offset.
 
 ### New
 
+- `LivenessResult.evidenceJson`: the JSON string the uploader sends and
+  the attestation covers.
 - `LivenessAttestor.prepare()` is called when the liveness screen opens,
   so slow setup (Play Integrity warm-up, App Attest key registration)
   happens during the session instead of delaying the result.
