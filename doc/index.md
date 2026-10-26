@@ -138,6 +138,10 @@ LivenessDetector(
     against it. ASIS has a short
     [plain-language introduction](https://www.asisonline.org/security-management-magazine/articles/2024/08/biometrics/presentation-attack-detection/).
 
+Still deciding? The **[honest notes](limitations.md)** cover every rough
+edge in plain language (what the anti-spoof checks can and can't catch,
+memory, lighting, device quirks) and the setting that changes each one.
+
 ## Pick your path
 
 <div class="grid cards" markdown>
