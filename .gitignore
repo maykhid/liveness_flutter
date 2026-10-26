@@ -22,3 +22,6 @@ coverage/
 
 # Local AI assistant notes: never commit
 CLAUDE.md
+
+# Private
+.private/
