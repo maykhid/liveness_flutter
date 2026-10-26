@@ -135,7 +135,7 @@ Four steps to a working check. Everything here uses defaults; the
 
 ```yaml
 dependencies:
-  liveness_flutter: ^0.5.0
+  liveness_flutter: ^0.6.0
 ```
 
 Needs **Flutter 3.38+** (Dart 3.10+), the minimum for `package:camera`
@@ -159,7 +159,7 @@ the first time. If the user says no, the session ends with
 `failureReason == LivenessFailureReason.permissionDenied`.
 
 > 🤖 **Using a coding agent?** Run `dart run liveness_flutter:skills` now
-> (0.6.0 and later) and ask your agent to do steps 2 to 4; the
+> and ask your agent to do steps 2 to 4; the
 > [agent skills](#-using-an-ai-coding-agent) tell it how.
 
 ### 2. Show the liveness screen
@@ -660,7 +660,7 @@ liveness_flutter is in **beta**. It's tested on real Android and iOS
 devices, but it's still evolving and the API may change before 1.0. Until
 then, a minor release (0.5 → 0.6) can include breaking changes; each one
 is listed under **Breaking** in the [CHANGELOG](CHANGELOG.md). Depend on
-`^0.5.0` and you'll only get compatible updates.
+`^0.6.0` and you'll only get compatible updates.
 
 **Anyone can [open an issue](https://github.com/maykhid/liveness_flutter/issues)**
 — bugs, a phone where detection misbehaves, confusing docs, or ideas. For

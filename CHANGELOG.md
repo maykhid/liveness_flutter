@@ -33,6 +33,14 @@
   (integrating the package in an app) and `liveness-flutter-server`
   (verifying results on a backend, with a reference verifier and a test
   vector). `dart run liveness_flutter:skills` copies them into a project.
+  See `doc/agent_skills.md`.
+
+### Docs
+
+- The README introduces the agent skills before the simple setup.
+- `doc/server_verification.md` covers the new payload, the separate
+  `attestation` field, and answering a retried upload with its first
+  verdict instead of rejecting the reused nonce.
 
 # 0.5.1
 
