@@ -54,6 +54,11 @@ model downloads. No account.**
 
 **Requirements:** Flutter 3.38+ · Android 7.0+ (API 24) · iOS 15.5+
 
+> 🤖 **Using Claude Code, Cursor, Copilot or another coding agent?** After
+> adding the package, run `dart run liveness_flutter:skills` and your
+> agent will know how to integrate it.
+> [More about the agent skills →](#-using-an-ai-coding-agent)
+
 ## ✨ Why this package?
 
 | | |
@@ -99,13 +104,13 @@ but doesn't ship one.
 | You want to… | Go to |
 |---|---|
 | Add a working liveness check to your app | **[Simple setup](#-simple-setup)** — about 10 minutes |
+| Have an AI coding agent do the integration | [Agent skills](#-using-an-ai-coding-agent) |
 | See every example, or run one | [Examples](#-examples) |
 | Make it look like your app (colors, text, your own screens) | [Make it look like your app](#-make-it-look-like-your-app) and the [fintech example](#-example-a-fully-branded-kyc-flow) |
 | Use it for KYC or anything with real consequences | [Bind sessions to your server](#-bind-sessions-to-your-server-recommended-for-kyc) |
 | Have an agent verify someone else | [Assisted mode](#-assisted-mode-verifying-someone-else) |
 | Quick answers (offline? app size? masks?) | [FAQ](#-faq) |
 | Know the limits before shipping | [Honest notes](#-honest-notes--read-before-shipping) |
-| Have an AI coding agent do the integration | [Agent skills](#-using-an-ai-coding-agent) |
 
 ---
 
@@ -140,6 +145,10 @@ library needs iOS 15.5+).
 You don't need a permissions package: the camera plugin asks for access
 the first time. If the user says no, the session ends with
 `failureReason == LivenessFailureReason.permissionDenied`.
+
+> 🤖 **Using a coding agent?** Run `dart run liveness_flutter:skills` now
+> (0.6.0 and later) and ask your agent to do steps 2 to 4; the
+> [agent skills](#-using-an-ai-coding-agent) tell it how.
 
 ### 2. Show the liveness screen
 
